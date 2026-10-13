@@ -3,7 +3,7 @@ import { Wifi, RefreshCw, Smartphone, Github, ArrowLeft, Keyboard, Maximize, X }
 
 export interface StreamControls {
   openKeyboard: () => void;
-  toggleFullscreen: () => void;
+  toggleFullscreen?: () => void;
 }
 
 interface StatusBarProps {
@@ -69,13 +69,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             >
               <Keyboard className="w-4 h-4" />
             </button>
-            <button
-              onClick={streamControls.toggleFullscreen}
-              className={iconBtn}
-              title="Pantalla completa"
-            >
-              <Maximize className="w-4 h-4" />
-            </button>
+            {streamControls.toggleFullscreen && (
+              <button
+                onClick={streamControls.toggleFullscreen}
+                className={iconBtn}
+                title="Pantalla completa"
+              >
+                <Maximize className="w-4 h-4" />
+              </button>
+            )}
             {onClose && (
               <button onClick={onClose} className={iconBtn} title="Cerrar sesión">
                 <X className="w-4 h-4" />

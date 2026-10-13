@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { RunningSession } from './RunningTasks.tsx';
 import { StreamControls } from './StatusBar.tsx';
 import { shouldDropFrame } from '../lib/frame-guard.ts';
+import { canUseFullscreen, isStandaloneDisplay } from '../lib/fullscreen.ts';
 
 interface StreamViewProps {
   session: RunningSession;
@@ -41,20 +42,57 @@ export const StreamView: React.FC<StreamViewProps> = ({
     }
   }, []);
 
-  // Fullscreen toggle (exposed to the top bar)
+  // Fullscreen toggle (exposed to the top bar). Standard API first, then the
+  // webkit prefix (older Chrome/Safari); warns instead of failing silently
+  // like before (iPhone Safari has no Fullscreen API at all).
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
+    try {
+      const doc = document as any;
+      const isFull = document.fullscreenElement || doc.webkitFullscreenElement;
+      if (!isFull) {
+        const el = document.documentElement as any;
+        const req =
+          el.requestFullscreen?.bind(el) || el.webkitRequestFullscreen?.bind(el);
+        if (!req) {
+          console.warn('[hydra] Pantalla completa no soportada en este navegador');
+          return;
+        }
+        Promise.resolve(req()).catch((err) =>
+          console.warn('[hydra] No se pudo abrir pantalla completa:', err)
+        );
+      } else {
+        const exit =
+          document.exitFullscreen?.bind(document) || doc.webkitExitFullscreen?.bind(document);
+        if (!exit) return;
+        Promise.resolve(exit()).catch((err) =>
+          console.warn('[hydra] No se pudo salir de pantalla completa:', err)
+        );
+      }
+    } catch (err) {
+      console.warn('[hydra] Pantalla completa no disponible:', err);
     }
   }, []);
 
+  // Publish stream controls to the top bar; clear on unmount.
+  // The fullscreen button is only offered when it can actually do something.
+  const [fullscreenOk] = useState(() => {
+    if (typeof document === 'undefined') return false;
+    const doc = document as any;
+    return canUseFullscreen(
+      doc.fullscreenEnabled === true,
+      doc.webkitFullscreenEnabled === true,
+      isStandaloneDisplay()
+    );
+  });
+
   // Publish stream controls to the top bar; clear on unmount
   useEffect(() => {
-    onControlsReady({ openKeyboard: triggerKeyboard, toggleFullscreen });
+    onControlsReady({
+      openKeyboard: triggerKeyboard,
+      toggleFullscreen: fullscreenOk ? toggleFullscreen : undefined,
+    });
     return () => onControlsReady(null);
-  }, [onControlsReady, triggerKeyboard, toggleFullscreen]);
+  }, [onControlsReady, triggerKeyboard, toggleFullscreen, fullscreenOk]);
 
   // Registra el renderer de video (callback antes que attach para no perder frames)
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { AppStreamer, pickPorts, buildGstArgs } from '../server/streamer.ts';
 import { VirtualDisplayManager, classifyTouchEvent, pickMainWindow, buildFitCommands, windowFits } from '../server/virtual-display.ts';
+import { canUseFullscreen } from '../src/lib/fullscreen.ts';
 import { readFileSync } from 'node:fs';
 
 describe('Task 1: Streamer anti-gris', () => {
@@ -214,5 +215,18 @@ describe('Task 3: frame guard del frontend', () => {
     expect(src).toContain('ArrayBuffer');
     expect(src).toContain('Blob');
     expect(src).toContain('arrayBuffer()');
+  });
+
+  it('canUseFullscreen oculta el botón cuando no sirve (PWA instalada o sin API, como Safari iPhone)', () => {
+    expect(canUseFullscreen(true, false, false)).toBe(true);
+    expect(canUseFullscreen(false, true, false)).toBe(true);
+    expect(canUseFullscreen(false, false, false)).toBe(false);
+    expect(canUseFullscreen(true, false, true)).toBe(false);
+  });
+
+  it('toggleFullscreen prueba webkit y avisa en consola en vez de tragar el error', () => {
+    const src = readFileSync('src/components/StreamView.tsx', 'utf8');
+    expect(src).toContain('webkitRequestFullscreen');
+    expect(src).toContain('console.warn');
   });
 });
