@@ -1,10 +1,28 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-export function useHydraSocket() {
+export function useHydraSocket(onSessionClosed?: (sessionId: string) => void) {
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
   const onVideoChunkRef = useRef<((chunk: Uint8Array) => void) | null>(null);
+  const pendingAttachRef = useRef<{ sessionId: string; width: number; height: number; fps: number } | null>(null);
+  const onSessionClosedRef = useRef(onSessionClosed);
+  onSessionClosedRef.current = onSessionClosed;
+
+  const flushPendingAttach = useCallback(() => {
+    const pending = pendingAttachRef.current;
+    const ws = wsRef.current;
+    if (pending && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'attach_stream',
+        sessionId: pending.sessionId,
+        width: pending.width,
+        height: pending.height,
+        fps: pending.fps,
+      }));
+      pendingAttachRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -17,6 +35,7 @@ export function useHydraSocket() {
     ws.onopen = () => {
       setIsConnected(true);
       console.log('[hydra-client] Conectado al servidor WebSocket');
+      flushPendingAttach();
     };
 
     ws.onclose = () => {
@@ -31,6 +50,8 @@ export function useHydraSocket() {
           if (msg.type === 'pong') {
             const rtt = Date.now() - msg.timestamp;
             setLatency(Math.max(1, Math.round(rtt)));
+          } else if (msg.type === 'session_closed') {
+            onSessionClosedRef.current?.(msg.sessionId);
           }
         } catch {
           // Ignore
@@ -39,6 +60,11 @@ export function useHydraSocket() {
         if (onVideoChunkRef.current) {
           onVideoChunkRef.current(new Uint8Array(event.data));
         }
+      } else if (typeof Blob !== 'undefined' && event.data instanceof Blob) {
+        // Safari iOS puede entregar Blob aunque binaryType sea arraybuffer
+        event.data.arrayBuffer().then((buf) => {
+          onVideoChunkRef.current?.(new Uint8Array(buf));
+        }).catch(() => {});
       }
     };
 
@@ -53,7 +79,7 @@ export function useHydraSocket() {
       clearInterval(pingInterval);
       ws.close();
     };
-  }, []);
+  }, [flushPendingAttach]);
 
   const sendTouch = useCallback((slot: number, trackingId: number, x: number, y: number, pressure = 128) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -93,14 +119,31 @@ export function useHydraSocket() {
   }, []);
 
   const attachStream = useCallback((sessionId: string, width: number, height: number, fps = 60) => {
+    const payload = {
+      sessionId,
+      width: Math.ceil(width / 2) * 2,
+      height: Math.ceil(height / 2) * 2,
+      fps,
+    };
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      // Cola el último attach para enviarlo al abrir (evita negro por race CONNECTING)
+      pendingAttachRef.current = payload;
+      return;
+    }
+
+    ws.send(JSON.stringify({
+      type: 'attach_stream',
+      ...payload,
+    }));
+  }, []);
+
+  const detachStream = useCallback(() => {
+    pendingAttachRef.current = null;
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     wsRef.current.send(JSON.stringify({
-      type: 'attach_stream',
-      sessionId,
-      width,
-      height,
-      fps
+      type: 'detach_stream'
     }));
   }, []);
 
@@ -115,6 +158,7 @@ export function useHydraSocket() {
     sendSync,
     sendKey,
     attachStream,
+    detachStream,
     setOnVideoChunk,
   };
 }

@@ -118,3 +118,31 @@ describe('Task 2: Virtual-display app real', () => {
     expect(src).toContain('click');
   });
 });
+
+describe('Task 3: frame guard del frontend', () => {
+  it('shouldDropFrame descarta <800B, isGrayFrame caza gris por varianza', async () => {
+    const { shouldDropFrame, isGrayFrame } = await import('../src/lib/frame-guard.ts');
+    expect(shouldDropFrame(100)).toBe(true);
+    expect(shouldDropFrame(799)).toBe(true);
+    expect(shouldDropFrame(800)).toBe(false);
+    expect(shouldDropFrame(5000)).toBe(false);
+    expect(isGrayFrame(128, 2)).toBe(true);
+    expect(isGrayFrame(15, 45)).toBe(false);
+    expect(isGrayFrame(128, 200)).toBe(false);
+    expect(isGrayFrame(250, 2)).toBe(false);
+  });
+
+  it('StreamView descarta chunk<800 y dropea si está decodificando', () => {
+    const src = readFileSync('src/components/StreamView.tsx', 'utf8');
+    expect(src).toContain('shouldDropFrame');
+    expect(src).toMatch(/decoding/);
+    expect(src).toContain('frame-guard');
+  });
+
+  it('useHydraSocket acepta Blob y ArrayBuffer', () => {
+    const src = readFileSync('src/hooks/useHydraSocket.ts', 'utf8');
+    expect(src).toContain('ArrayBuffer');
+    expect(src).toContain('Blob');
+    expect(src).toContain('arrayBuffer()');
+  });
+});

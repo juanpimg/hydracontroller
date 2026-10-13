@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Keyboard, Maximize, Minimize, ArrowLeft, X } from 'lucide-react';
 import { RunningSession } from './RunningTasks.tsx';
+import { shouldDropFrame } from '../lib/frame-guard.ts';
 
 interface StreamViewProps {
   session: RunningSession;
@@ -10,7 +11,9 @@ interface StreamViewProps {
   sendSync: (activeCount: number) => void;
   sendKey: (keyCode: number, isDown: boolean) => void;
   attachStream: (sessionId: string, width: number, height: number, fps?: number) => void;
+  detachStream?: () => void;
   setOnVideoChunk: (callback: ((chunk: Uint8Array) => void) | null) => void;
+  isConnected: boolean;
 }
 
 export const StreamView: React.FC<StreamViewProps> = ({
@@ -21,13 +24,16 @@ export const StreamView: React.FC<StreamViewProps> = ({
   sendSync,
   sendKey,
   attachStream,
+  detachStream,
   setOnVideoChunk,
+  isConnected,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls] = useState(true);
+  const [hasVideo, setHasVideo] = useState(false);
 
   // Active pointer tracking map: pointerId -> slot (0..9)
   const activeSlots = useRef<Map<number, number>>(new Map());
@@ -48,79 +54,126 @@ export const StreamView: React.FC<StreamViewProps> = ({
     }
   };
 
-  // Connect stream when mounted
+  // Registra el renderer de video (callback antes que attach para no perder frames)
   useEffect(() => {
-    const width = session.width || 720;
-    const height = session.height || 1280;
-    attachStream(session.id, width, height, 60);
+    let isDestroyed = false;
+    let latestSeq = 0;
+    let latestRenderedSeq = 0;
+    let decoding = false;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    setOnVideoChunk((chunk) => {
+      if (isDestroyed) return;
+      // Descarta fragmentos rotos (<800B) antes de crear el Blob
+      if (shouldDropFrame(chunk.byteLength)) return;
+      // Drop-if-busy: en móvil lento no se apilan decodificaciones
+      if (decoding) return;
+      decoding = true;
+      const seq = ++latestSeq;
 
-    // VideoDecoder for ultra-low latency WebCodecs
-    let decoder: any = null;
-    if (typeof (window as any).VideoDecoder !== 'undefined') {
-      try {
-        decoder = new (window as any).VideoDecoder({
-          output: (frame: any) => {
-            if (ctx) {
-              ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
-            }
-            frame.close();
-          },
-          error: (e: any) => {
-            console.warn('[hydra-decoder] VideoDecoder error:', e);
-          },
-        });
-
-        decoder.configure({
-          codec: 'avc1.42001f', // Baseline H.264
-          hardwareAcceleration: 'prefer-hardware',
-          optimizeForLatency: true,
-        });
-
-        setOnVideoChunk((chunk) => {
-          if (decoder && decoder.state === 'configured') {
-            try {
-              const encChunk = new (window as any).EncodedVideoChunk({
-                type: 'key',
-                timestamp: performance.now() * 1000,
-                data: chunk,
-              });
-              decoder.decode(encChunk);
-            } catch {
-              // Ignore frame errors
-            }
-          }
-        });
-      } catch (err) {
-        console.warn('[hydra-decoder] Failed to init WebCodecs VideoDecoder:', err);
+      const drawCanvas = canvasRef.current;
+      const drawCtx = drawCanvas?.getContext('2d');
+      if (!drawCanvas || !drawCtx) {
+        decoding = false;
+        return;
       }
-    }
+
+      const blob = new Blob([chunk as unknown as BlobPart], { type: 'image/jpeg' });
+      if (typeof window.createImageBitmap === 'function') {
+        window.createImageBitmap(blob)
+          .then((bitmap) => {
+            if (!isDestroyed && seq >= latestRenderedSeq) {
+              latestRenderedSeq = seq;
+              drawCtx.drawImage(bitmap, 0, 0, drawCanvas.width, drawCanvas.height);
+              setHasVideo(true);
+            }
+            bitmap.close();
+            decoding = false;
+          })
+          .catch(() => {
+            decoding = false;
+          });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          if (!isDestroyed && seq >= latestRenderedSeq) {
+            latestRenderedSeq = seq;
+            drawCtx.drawImage(img, 0, 0, drawCanvas.width, drawCanvas.height);
+            setHasVideo(true);
+          }
+          URL.revokeObjectURL(url);
+          decoding = false;
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          decoding = false;
+        };
+        img.src = url;
+      }
+    });
 
     return () => {
+      isDestroyed = true;
       setOnVideoChunk(null);
-      if (decoder && decoder.state !== 'closed') {
-        try {
-          decoder.close();
-        } catch {}
+    };
+  }, [setOnVideoChunk]);
+
+  // Attach al stream cuando hay conexión (reintenta al reconectar, evita race CONNECTING)
+  useEffect(() => {
+    if (!isConnected) return;
+    const width = Math.ceil((session.width || 720) / 2) * 2;
+    const height = Math.ceil((session.height || 1280) / 2) * 2;
+    setHasVideo(false);
+    attachStream(session.id, width, height, 30);
+
+    return () => {
+      if (detachStream) {
+        detachStream();
       }
     };
-  }, [session, attachStream, setOnVideoChunk]);
+  }, [session.id, isConnected, attachStream, detachStream]);
+
+  // Helper to map pointer events to virtual display coordinates accounting for object-contain letterboxing
+  const getTouchCoords = useCallback((e: React.PointerEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const sessWidth = session.width || 720;
+    const sessHeight = session.height || 1280;
+
+    const canvasAspect = sessWidth / sessHeight;
+    const rectAspect = rect.width / rect.height;
+
+    let renderWidth = rect.width;
+    let renderHeight = rect.height;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (rectAspect > canvasAspect) {
+      // Letterboxed on left and right
+      renderWidth = rect.height * canvasAspect;
+      offsetX = (rect.width - renderWidth) / 2;
+    } else {
+      // Letterboxed on top and bottom
+      renderHeight = rect.width / canvasAspect;
+      offsetY = (rect.height - renderHeight) / 2;
+    }
+
+    const scaleX = sessWidth / renderWidth;
+    const scaleY = sessHeight / renderHeight;
+
+    const x = Math.max(0, Math.min(sessWidth, (e.clientX - rect.left - offsetX) * scaleX));
+    const y = Math.max(0, Math.min(sessHeight, (e.clientY - rect.top - offsetY) * scaleY));
+
+    return { x, y };
+  }, [session.width, session.height]);
 
   // Multitouch Pointer Handlers mapped directly to Linux EV_ABS touchscreen
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = session.width / rect.width;
-    const scaleY = session.height / rect.height;
-
-    const x = Math.max(0, Math.min(session.width, (e.clientX - rect.left) * scaleX));
-    const y = Math.max(0, Math.min(session.height, (e.clientY - rect.top) * scaleY));
+    const coords = getTouchCoords(e);
+    if (!coords) return;
 
     let slot = activeSlots.current.get(e.pointerId);
     if (slot === undefined) {
@@ -137,29 +190,22 @@ export const StreamView: React.FC<StreamViewProps> = ({
     }
 
     const pressure = Math.round((e.pressure || 0.5) * 255);
-    sendTouch(slot, e.pointerId % 32767, x, y, pressure);
+    sendTouch(slot, e.pointerId % 32767, coords.x, coords.y, pressure);
     sendSync(activeSlots.current.size);
-  }, [session, sendTouch, sendSync]);
+  }, [getTouchCoords, sendTouch, sendSync]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     const slot = activeSlots.current.get(e.pointerId);
     if (slot === undefined) return;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = session.width / rect.width;
-    const scaleY = session.height / rect.height;
-
-    const x = Math.max(0, Math.min(session.width, (e.clientX - rect.left) * scaleX));
-    const y = Math.max(0, Math.min(session.height, (e.clientY - rect.top) * scaleY));
+    const coords = getTouchCoords(e);
+    if (!coords) return;
 
     const pressure = Math.round((e.pressure || 0.5) * 255);
-    sendTouch(slot, e.pointerId % 32767, x, y, pressure);
+    sendTouch(slot, e.pointerId % 32767, coords.x, coords.y, pressure);
     sendSync(activeSlots.current.size);
-  }, [session, sendTouch, sendSync]);
+  }, [getTouchCoords, sendTouch, sendSync]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -217,14 +263,25 @@ export const StreamView: React.FC<StreamViewProps> = ({
       {/* Touch Surface Canvas */}
       <canvas
         ref={canvasRef}
-        width={session.width}
-        height={session.height}
+        width={Math.ceil((session.width || 720) / 2) * 2}
+        height={Math.ceil((session.height || 1280) / 2) * 2}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         className="w-full h-full object-contain cursor-crosshair touch-none"
       />
+
+      {!hasVideo && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 pointer-events-none">
+          <div className="text-cyan-300 text-sm animate-pulse">
+            {!isConnected ? 'Conectando al servidor…' : 'Iniciando app en display virtual…'}
+          </div>
+          <div className="text-slate-500 text-xs">
+            Si tarda más de 5s, vuelve al lanzador y reabre
+          </div>
+        </div>
+      )}
 
       {/* Floating Action Controls */}
       <div
