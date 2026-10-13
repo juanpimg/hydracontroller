@@ -1,12 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Keyboard, Maximize, Minimize, ArrowLeft, X } from 'lucide-react';
 import { RunningSession } from './RunningTasks.tsx';
+import { StreamControls } from './StatusBar.tsx';
 import { shouldDropFrame } from '../lib/frame-guard.ts';
 
 interface StreamViewProps {
   session: RunningSession;
-  onClose: () => void;
-  onBack: () => void;
   sendTouch: (slot: number, trackingId: number, x: number, y: number, pressure?: number) => void;
   sendSync: (activeCount: number) => void;
   sendKey: (keyCode: number, isDown: boolean) => void;
@@ -14,12 +12,11 @@ interface StreamViewProps {
   detachStream?: () => void;
   setOnVideoChunk: (callback: ((chunk: Uint8Array) => void) | null) => void;
   isConnected: boolean;
+  onControlsReady: (c: StreamControls | null) => void;
 }
 
 export const StreamView: React.FC<StreamViewProps> = ({
   session,
-  onClose,
-  onBack,
   sendTouch,
   sendSync,
   sendKey,
@@ -27,32 +24,37 @@ export const StreamView: React.FC<StreamViewProps> = ({
   detachStream,
   setOnVideoChunk,
   isConnected,
+  onControlsReady,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showControls] = useState(true);
   const [hasVideo, setHasVideo] = useState(false);
 
   // Active pointer tracking map: pointerId -> slot (0..9)
   const activeSlots = useRef<Map<number, number>>(new Map());
 
-  // Keyboard focus toggle
-  const triggerKeyboard = () => {
+  // Keyboard focus toggle (exposed to the top bar)
+  const triggerKeyboard = useCallback(() => {
     if (hiddenInputRef.current) {
       hiddenInputRef.current.focus();
     }
-  };
+  }, []);
 
-  // Fullscreen toggle
-  const toggleFullscreen = () => {
+  // Fullscreen toggle (exposed to the top bar)
+  const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => {});
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+      document.exitFullscreen().catch(() => {});
     }
-  };
+  }, []);
+
+  // Publish stream controls to the top bar; clear on unmount
+  useEffect(() => {
+    onControlsReady({ openKeyboard: triggerKeyboard, toggleFullscreen });
+    return () => onControlsReady(null);
+  }, [onControlsReady, triggerKeyboard, toggleFullscreen]);
 
   // Registra el renderer de video (callback antes que attach para no perder frames)
   useEffect(() => {
@@ -273,58 +275,12 @@ export const StreamView: React.FC<StreamViewProps> = ({
       />
 
       {!hasVideo && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 pointer-events-none">
-          <div className="text-cyan-300 text-sm animate-pulse">
-            {!isConnected ? 'Conectando al servidor…' : 'Iniciando app en display virtual…'}
-          </div>
-          <div className="text-slate-500 text-xs">
-            Si tarda más de 5s, vuelve al lanzador y reabre
-          </div>
+        <div className="absolute inset-0 flex items-center justify-center bg-black pointer-events-none">
+          <span className="text-slate-500 text-sm">
+            {!isConnected ? 'Conectando…' : 'Iniciando app…'}
+          </span>
         </div>
       )}
-
-      {/* Floating Action Controls */}
-      <div
-        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 rounded-2xl bg-slate-900/90 backdrop-blur-md border border-slate-700/60 shadow-2xl transition-opacity duration-300 z-50 ${
-          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        {/* Back to Launcher */}
-        <button
-          onClick={onBack}
-          className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-          title="Volver al lanzador"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-
-        {/* Keyboard Trigger */}
-        <button
-          onClick={triggerKeyboard}
-          className="p-2.5 rounded-xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/30 transition-colors"
-          title="Abrir teclado nativo"
-        >
-          <Keyboard className="w-5 h-5" />
-        </button>
-
-        {/* Fullscreen Toggle */}
-        <button
-          onClick={toggleFullscreen}
-          className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-          title="Pantalla completa"
-        >
-          {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-        </button>
-
-        {/* Close App Session */}
-        <button
-          onClick={onClose}
-          className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30 transition-colors"
-          title="Cerrar sesión"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
     </div>
   );
 };

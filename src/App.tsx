@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { StatusBar } from './components/StatusBar.tsx';
+import { StatusBar, StreamControls } from './components/StatusBar.tsx';
 import { AppGrid, LinuxApp } from './components/AppGrid.tsx';
 import { RunningTasks, RunningSession } from './components/RunningTasks.tsx';
 import { StreamView } from './components/StreamView.tsx';
@@ -10,7 +10,7 @@ export const App: React.FC = () => {
   const [sessions, setSessions] = useState<RunningSession[]>([]);
   const [activeSession, setActiveSession] = useState<RunningSession | null>(null);
   const [isLoadingApps, setIsLoadingApps] = useState(true);
-  const [audioToClient, setAudioToClient] = useState(true);
+  const [streamControls, setStreamControls] = useState<StreamControls | null>(null);
   const [favorites, setFavorites] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('hydra_fav_apps');
@@ -131,22 +131,29 @@ export const App: React.FC = () => {
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       if (activeSession?.id === sessionId) {
         setActiveSession(null);
+        setStreamControls(null);
       }
     } catch (err) {
       console.error('Error closing session:', err);
     }
   };
 
+  const handleBackToLauncher = useCallback(() => {
+    setActiveSession(null);
+    setStreamControls(null);
+  }, []);
+
   return (
     <div className="h-full w-full flex flex-col bg-slate-950 overflow-hidden font-sans select-none">
-      {/* Top Status Bar */}
+      {/* Top Status Bar (slim; hosts session controls, nothing overlays the app) */}
       <StatusBar
         isConnected={isConnected}
         latency={latency}
-        audioToClient={audioToClient}
-        onToggleAudio={() => setAudioToClient((prev) => !prev)}
         onRefreshApps={loadApps}
         activeAppTitle={activeSession?.appName}
+        onBack={activeSession ? handleBackToLauncher : undefined}
+        onClose={activeSession ? () => handleCloseSession(activeSession.id) : undefined}
+        streamControls={activeSession ? streamControls : null}
       />
 
       {/* Main View: Launcher vs Streaming Session */}
@@ -155,8 +162,6 @@ export const App: React.FC = () => {
           <StreamView
             key={activeSession.id}
             session={activeSession}
-            onClose={() => handleCloseSession(activeSession.id)}
-            onBack={() => setActiveSession(null)}
             sendTouch={sendTouch}
             sendSync={sendSync}
             sendKey={sendKey}
@@ -164,6 +169,7 @@ export const App: React.FC = () => {
             detachStream={detachStream}
             setOnVideoChunk={setOnVideoChunk}
             isConnected={isConnected}
+            onControlsReady={setStreamControls}
           />
         ) : (
           <AppGrid
@@ -182,7 +188,7 @@ export const App: React.FC = () => {
         activeSessionId={activeSession?.id || null}
         onSelectSession={(sess) => setActiveSession(sess)}
         onCloseSession={handleCloseSession}
-        onBackToLauncher={() => setActiveSession(null)}
+        onBackToLauncher={handleBackToLauncher}
       />
     </div>
   );

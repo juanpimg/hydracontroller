@@ -1,6 +1,6 @@
 {
   "name": "Hydra Controller",
-  "short_name": "Hydra Deck",
+  "short_name": "Hydra",
   "description": "Lanzador móvil táctil de ultra-baja latencia para tu PC Linux",
   "start_url": "/",
   "display": "standalone",
