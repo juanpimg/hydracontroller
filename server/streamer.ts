@@ -213,7 +213,7 @@ export class AppStreamer extends EventEmitter {
 
     const encoderArgs = this.getEncoderArgs();
     if (this.useSoftwareEncoder) {
-      console.log('[hydra-streamer] Using software MJPEG encoder (avenc_mjpeg) after VAAPI failures');
+      console.log('[hydra-streamer] Using software MJPEG encoder (avenc_mjpeg)');
     }
 
     const gstArgs = buildGstArgs({
