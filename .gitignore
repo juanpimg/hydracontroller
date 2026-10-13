@@ -31,3 +31,4 @@ test-artifacts/
 
 # binario nativo compilado (npm run build:uinput lo regenera)
 server/uinput/hydra-uinput
+.superpowers/
