@@ -30,8 +30,17 @@ export function classifyTouchEvent(
 
 export interface AppWindow {
   id: string;
+  x?: number;
+  y?: number;
   w: number;
   h: number;
+}
+
+// True si la ventana ya ocupa todo el display: el polling para aquí.
+// Sin esto los reintentos fijos se agotan antes de que apps lentas
+// (Firefox frío) mapeen su ventana y el crop queda para siempre.
+export function windowFits(win: AppWindow, width: number, height: number): boolean {
+  return (win.x ?? 0) === 0 && (win.y ?? 0) === 0 && win.w === width && win.h === height;
 }
 
 // Elige la ventana principal (mayor área): gamescope escala la ventana X11 al
@@ -84,14 +93,33 @@ export class VirtualDisplayManager extends EventEmitter {
   // el táctil cae en otro widget y la imagen no llena la pantalla.
   // También se llama desde attach_stream: la ventana suele mapear tarde
   // (Qt frío ~40s) y display-ready llega pronto.
+  // Polling hasta encajar (máx 120s): los reintentos fijos se agotaban antes
+  // de que apps lentas (Firefox frío, minutos) mapeen su ventana.
+  private fitPolls = new Map<string, NodeJS.Timeout>();
+
   public fitSessionWindows(sessionId: string): void {
     const entry = this.activeSessions.get(sessionId);
     if (!entry) return;
-    this.fitAfterReady(entry.session.displayNum, entry.session.width, entry.session.height);
+    this.fitAfterReady(entry.session.displayNum, entry.session.width, entry.session.height, sessionId);
   }
 
-  private fitAfterReady(displayNum: number, width: number, height: number): void {
-    const attempt = () => {
+  private fitAfterReady(displayNum: number, width: number, height: number, sessionId?: string): void {
+    if (sessionId) {
+      const prev = this.fitPolls.get(sessionId);
+      if (prev) clearInterval(prev);
+    }
+    // Polling hasta encajar (máx 120s): la ventana mapea tarde (Qt frío ~40s,
+    // Firefox frío minutos) y los reintentos fijos se agotaban antes.
+    // Para cuando encaja para no spamear xdotool.
+    let elapsed = 0;
+    const poll = () => {
+      elapsed += 4000;
+      // Sesión cerrada o display inválido: parar
+      if (sessionId && !this.activeSessions.has(sessionId)) {
+        if (sessionId) { clearInterval(timer); this.fitPolls.delete(sessionId); }
+        return;
+      }
+      if (displayNum <= 0) return;
       try {
         const env = { ...process.env, DISPLAY: `:${displayNum}` };
         const out = execFileSync('xdotool', ['search', '--onlyvisible', '--class', '.'], {
@@ -103,23 +131,36 @@ export class VirtualDisplayManager extends EventEmitter {
             const g = execFileSync('xdotool', ['getwindowgeometry', '--shell', id], {
               env, stdio: ['ignore', 'pipe', 'ignore'],
             }).toString();
+            const x = parseInt(g.match(/^X=(-?\d+)/m)?.[1] || '0', 10);
+            const y = parseInt(g.match(/^Y=(-?\d+)/m)?.[1] || '0', 10);
             const w = parseInt(g.match(/WIDTH=(\d+)/)?.[1] || '0', 10);
             const h = parseInt(g.match(/HEIGHT=(\d+)/)?.[1] || '0', 10);
-            if (w > 0 && h > 0) wins.push({ id, w, h });
+            if (w > 0 && h > 0) wins.push({ id, x, y, w, h });
           } catch { /* ventana fugaz, ignora y sigue */ }
         }
-        const main = pickMainWindow(wins);
-        if (!main) return;
-        for (const args of buildFitCommands(main, width, height)) {
+        const mainId = pickMainWindow(wins);
+        if (!mainId) return;
+        const main = wins.find((w) => w.id === mainId)!;
+        if (windowFits(main, width, height)) {
+          clearInterval(timer);
+          if (sessionId) this.fitPolls.delete(sessionId);
+          return;
+        }
+        for (const args of buildFitCommands(mainId, width, height)) {
           try {
             execFileSync('xdotool', args, { env, stdio: 'ignore' });
-          } catch { /* reintento posterior lo cubre */ }
+          } catch { /* siguiente poll lo reintenta */ }
         }
-      } catch { /* display aún no listo, reintento posterior lo cubre */ }
+      } catch { /* display aún no listo, siguiente poll lo cubre */ }
+      if (elapsed >= 120000) {
+        clearInterval(timer);
+        if (sessionId) this.fitPolls.delete(sessionId);
+      }
     };
-    // La app puede tardar en mapear su ventana tras display-ready (Qt frío
-    // tarda decenas de segundos): reintentos largos + trigger en attach
-    for (const ms of [500, 2000, 4000, 8000, 15000]) setTimeout(attempt, ms);
+    const timer = setInterval(poll, 4000);
+    if (sessionId) this.fitPolls.set(sessionId, timer);
+    // Primer intento sin esperar al intervalo
+    setTimeout(poll, 500);
   }
 
   // Foco inicial best-effort tras display-ready (fire-and-forget, nunca bloquea
@@ -212,7 +253,7 @@ export class VirtualDisplayManager extends EventEmitter {
         this.emit('display-ready', session);
         // Ventana a tamaño display (mapeo 1:1) + foco inicial: sin app al
         // frente gamescope compone fondo gris
-        this.fitAfterReady(session.displayNum, evenW, evenH);
+        this.fitAfterReady(session.displayNum, evenW, evenH, sessionId);
         this.focusAfterReady(session.displayNum, evenW, evenH);
       }
 
@@ -255,6 +296,11 @@ export class VirtualDisplayManager extends EventEmitter {
     if (!entry) return false;
 
     console.log(`[hydra-display] Terminating session ${sessionId}`);
+    const fitPoll = this.fitPolls.get(sessionId);
+    if (fitPoll) {
+      clearInterval(fitPoll);
+      this.fitPolls.delete(sessionId);
+    }
     try {
       entry.proc.kill('SIGTERM');
       const killTimer = setTimeout(() => {

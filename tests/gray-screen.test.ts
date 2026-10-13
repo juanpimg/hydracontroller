@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AppStreamer, pickPorts, buildGstArgs } from '../server/streamer.ts';
-import { VirtualDisplayManager, classifyTouchEvent, pickMainWindow, buildFitCommands } from '../server/virtual-display.ts';
+import { VirtualDisplayManager, classifyTouchEvent, pickMainWindow, buildFitCommands, windowFits } from '../server/virtual-display.ts';
 import { readFileSync } from 'node:fs';
 
 describe('Task 1: Streamer anti-gris', () => {
@@ -147,6 +147,12 @@ describe('Task 2: Virtual-display app real', () => {
       ['windowmove', '5', '0', '0'],
       ['windowraise', '5'],
     ]);
+  });
+
+  it('windowFits decide si hace falta re-ajustar (polling hasta encajar, no reintentos fijos)', () => {
+    expect(windowFits({ id: 'a', x: 0, y: 0, w: 720, h: 1280 }, 720, 1280)).toBe(true);
+    expect(windowFits({ id: 'a', x: 1, y: 1, w: 640, h: 480 }, 720, 1280)).toBe(false);
+    expect(windowFits({ id: 'a', x: 0, y: 0, w: 1024, h: 1280 }, 720, 1280)).toBe(false);
   });
 
   it('fitAfterReady busca por --class (con --name . no matchea nada: bug silencioso verificado en vivo)', () => {
