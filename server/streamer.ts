@@ -40,6 +40,44 @@ export function pickPorts(
   return { outPortId, inPortId };
 }
 
+export interface GstArgsOptions {
+  width: number;
+  height: number;
+  fps?: number;
+  pipewireNodeId?: number;
+  clientName: string;
+  encoderArgs: string[];
+}
+
+export function buildGstArgs(opts: GstArgsOptions): string[] {
+  // Dimensiones siempre pares (YUV420/gamescope lo exigen; idempotente si ya vienen pares)
+  const width = Math.ceil(opts.width / 2) * 2;
+  const height = Math.ceil(opts.height / 2) * 2;
+  const fps = Math.max(30, opts.fps ?? 30);
+  return [
+    'pipewiresrc',
+    ...(opts.pipewireNodeId ? [`target-object=${opts.pipewireNodeId}`] : []),
+    'autoconnect=false',
+    `client-name=${opts.clientName}`,
+    'keepalive-time=1000',
+    '!',
+    `video/x-raw,format=BGRx,width=${width},height=${height},framerate=${fps}/1`,
+    '!',
+    'queue',
+    'max-size-buffers=3',
+    'leaky=downstream',
+    '!',
+    'videoconvert',
+    '!',
+    'videoscale',
+    '!',
+    ...opts.encoderArgs,
+    '!',
+    'fdsink',
+    'fd=1',
+  ];
+}
+
 export class AppStreamer extends EventEmitter {
   private streamProc: ChildProcess | null = null;
   private isStreaming = false;
@@ -176,28 +214,14 @@ export class AppStreamer extends EventEmitter {
       console.log('[hydra-streamer] Using software MJPEG encoder (avenc_mjpeg) after VAAPI failures');
     }
 
-    const gstArgs = [
-      'pipewiresrc',
-      ...(this.options.pipewireNodeId ? [`target-object=${this.options.pipewireNodeId}`] : []),
-      'autoconnect=false',
-      `client-name=${clientName}`,
-      'keepalive-time=1000',
-      '!',
-      `video/x-raw,format=BGRx,width=${width},height=${height},framerate=${Math.max(30, fps)}/1`,
-      '!',
-      'queue',
-      'max-size-buffers=3',
-      'leaky=downstream',
-      '!',
-      'videoconvert',
-      '!',
-      'videoscale',
-      '!',
-      ...encoderArgs,
-      '!',
-      'fdsink',
-      'fd=1',
-    ];
+    const gstArgs = buildGstArgs({
+      width: rawW,
+      height: rawH,
+      fps,
+      pipewireNodeId: this.options.pipewireNodeId,
+      clientName,
+      encoderArgs,
+    });
 
     const proc = spawn('gst-launch-1.0', gstArgs, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -290,8 +314,8 @@ export class AppStreamer extends EventEmitter {
         const frame = buffer.subarray(soi, eoi + 2);
         buffer = buffer.subarray(eoi + 2);
 
-        // PREROLL / buffer vacío: aún no hay imagen real, no publicar
-        if (frame.length === 0) continue;
+        // JPEG roto (<800B, mismo umbral que Task3): frame gris/incompleto, no publicar
+        if (frame.length < 800) continue;
 
         for (const client of this.clients) {
           if (client.readyState === 1 /* WebSocket.OPEN */) {

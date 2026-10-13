@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AppStreamer, pickPorts } from '../server/streamer.ts';
+import { AppStreamer, pickPorts, buildGstArgs } from '../server/streamer.ts';
 import { readFileSync } from 'node:fs';
 
 describe('Task 1: Streamer anti-gris', () => {
@@ -23,6 +23,41 @@ describe('Task 1: Streamer anti-gris', () => {
     expect(src).toContain('avenc_mjpeg');
     expect(src.includes("'jpegenc'")).toBe(false);
     expect(src.includes('"jpegenc"')).toBe(false);
+  });
+
+  it('buildGstArgs genera el pipeline real con caps + queue leaky + encoder (sin spawnear gst)', () => {
+    const hw = buildGstArgs({ width: 1280, height: 720, fps: 30, clientName: 'hydra_x', encoderArgs: ['vajpegenc', 'quality=85'] });
+    const s = hw.join(' ');
+    expect(s).toContain('video/x-raw,format=BGRx,width=1280,height=720,framerate=30/1');
+    expect(s).toContain('queue max-size-buffers=3 leaky=downstream');
+    expect(s).toContain('videoconvert');
+    expect(s).toContain('videoscale');
+    expect(s).toContain('vajpegenc');
+    expect(s).not.toContain('target-object');
+    // orden: caps antes de queue, queue antes de convert/scale, encoder antes de fdsink
+    expect(s.indexOf('video/x-raw,format=BGRx')).toBeLessThan(s.indexOf('queue'));
+    expect(s.indexOf('leaky=downstream')).toBeLessThan(s.indexOf('videoconvert'));
+    expect(s.indexOf('videoscale')).toBeLessThan(s.indexOf('vajpegenc'));
+    expect(s.indexOf('vajpegenc')).toBeLessThan(s.indexOf('fdsink'));
+    // software + nodeId + impares → target-object, redondeo a par, avenc_mjpeg
+    const sw = buildGstArgs({ width: 393, height: 841, fps: 30, pipewireNodeId: 42, clientName: 'hydra_x', encoderArgs: ['avenc_mjpeg', 'quality=85'] });
+    const ss = sw.join(' ');
+    expect(ss).toContain('target-object=42');
+    expect(ss).toContain('width=394');
+    expect(ss).toContain('height=842');
+    expect(ss).toContain('avenc_mjpeg');
+  });
+
+  it('startProcess cablea getEncoderArgs al pipeline (sin spawnear gst)', () => {
+    const src = readFileSync('server/streamer.ts', 'utf8');
+    expect(src).toContain('this.getEncoderArgs()');
+    expect(src).toContain('buildGstArgs(');
+    expect(src).toMatch(/buildGstArgs\(\{[\s\S]*?encoderArgs/);
+  });
+
+  it('descarta frames rotos <800B (mismo umbral que Task3)', () => {
+    const src = readFileSync('server/streamer.ts', 'utf8');
+    expect(src).toMatch(/frame\.length\s*<\s*800/);
   });
 
   it('pickPorts hace break tras primer outPort válido', () => {
