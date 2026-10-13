@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AppStreamer, pickPorts, buildGstArgs } from '../server/streamer.ts';
+import { VirtualDisplayManager } from '../server/virtual-display.ts';
 import { readFileSync } from 'node:fs';
 
 describe('Task 1: Streamer anti-gris', () => {
@@ -79,5 +80,41 @@ describe('Task 1: Streamer anti-gris', () => {
     const r = pickPorts(dump as any, 42, 'hydra_x');
     expect(r.outPortId).toBeNull();
     expect(r.inPortId).toBeNull();
+  });
+});
+
+describe('Task 2: Virtual-display app real', () => {
+  it('isAppAlive: viva tras launch, falsa tras terminate; par + display 0 hasta ready', () => {
+    const mgr = new VirtualDisplayManager();
+    const s1 = mgr.launchApp('x', 't', 'sleep 30', 390, 844);
+    expect(s1.width).toBe(390); // ya par, sin cambio
+    expect(s1.height).toBe(844);
+    expect(s1.displayNum).toBe(0);
+    expect(s1.isReady).toBe(false);
+    const s2 = mgr.launchApp('x', 't', 'sleep 30', 393, 841);
+    expect(s2.width).toBe(394); // impar → par
+    expect(s2.height).toBe(842);
+    expect(mgr.isAppAlive(s1.id)).toBe(true);
+    expect(mgr.isAppAlive('inexistente')).toBe(false);
+    mgr.terminateSession(s1.id);
+    expect(mgr.isAppAlive(s1.id)).toBe(false);
+    mgr.terminateSession(s2.id);
+    expect(mgr.isAppAlive(s2.id)).toBe(false);
+  });
+
+  it('lanza error si execCmd vacío antes de spawn', () => {
+    const mgr = new VirtualDisplayManager();
+    expect(() => mgr.launchApp('x', 't', '', 390, 844)).toThrow();
+    expect(() => mgr.launchApp('x', 't', '   ', 390, 844)).toThrow();
+  });
+
+  it('escucha stdout además de stderr para Starting Xwayland y enfoca ventana al ready', () => {
+    const src = readFileSync('server/virtual-display.ts', 'utf8');
+    expect(src).toContain('proc.stdout');
+    expect(src).toContain('Starting Xwayland');
+    expect(src).toContain('xdotool');
+    expect(src).toContain('windowactivate');
+    expect(src).toContain('mousemove');
+    expect(src).toContain('click');
   });
 });
