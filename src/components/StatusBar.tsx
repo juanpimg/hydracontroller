@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wifi, Volume2, RefreshCw, Smartphone, Monitor } from 'lucide-react';
+import { Wifi, Volume2, RefreshCw, Smartphone, Monitor, Github } from 'lucide-react';
 
 interface StatusBarProps {
   isConnected: boolean;
@@ -81,6 +81,18 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         >
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
+
+        {/* GitHub */}
+        <a
+          href="https://github.com/juanpimg/hydracontroller"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-1.5 rounded-full bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
+          title="Ver código en GitHub — ¡contribuye!"
+          aria-label="Ver HydraController en GitHub (pestaña nueva)"
+        >
+          <Github className="w-3.5 h-3.5" />
+        </a>
       </div>
     </header>
   );
