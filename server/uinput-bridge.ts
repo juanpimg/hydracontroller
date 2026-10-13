@@ -23,6 +23,15 @@ export class UInputBridge {
         stdio: ['pipe', 'inherit', 'inherit'],
       });
 
+      this.proc.on('error', (err) => {
+        console.error('[hydra-uinput] UInput process error:', err.message);
+        this.proc = null;
+      });
+
+      this.proc.stdin?.on('error', (err) => {
+        console.warn('[hydra-uinput] UInput stdin stream error:', err.message);
+      });
+
       this.proc.on('exit', (code) => {
         console.log(`[hydra-uinput] Process exited with code ${code}`);
         this.proc = null;

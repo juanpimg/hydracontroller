@@ -97,10 +97,10 @@ export class AppStreamer extends EventEmitter {
   }
 
   public getEncoderArgs(): string[] {
-    // avenc_mjpeg NO tiene propiedad quality (solo qmin/qmax) → pasarla mata gst al instante
-    return this.useSoftwareEncoder
-      ? ['avenc_mjpeg']
-      : ['vajpegenc', 'quality=85'];
+    // avenc_mjpeg NO tiene propiedad quality (solo qmin/qmax) → pasarla mata gst.
+    // Defaults = CBR 200kbps/qmax=31 = bloques 8x8. Quantizer constante ≈ JPEG q85-90.
+    if (this.useSoftwareEncoder) return ['avenc_mjpeg', 'pass=quant', 'quantizer=2'];
+    return ['vajpegenc', 'quality=85'];
   }
 
   private recordFailure(): void {

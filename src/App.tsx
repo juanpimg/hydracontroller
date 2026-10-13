@@ -27,8 +27,12 @@ export const App: React.FC = () => {
     sendSync,
     sendKey,
     attachStream,
+    detachStream,
     setOnVideoChunk,
-  } = useHydraSocket();
+  } = useHydraSocket((closedId) => {
+    setSessions((prev) => prev.filter((s) => s.id !== closedId));
+    setActiveSession((prev) => (prev?.id === closedId ? null : prev));
+  });
 
   // Load apps from backend
   const loadApps = useCallback(async () => {
@@ -51,8 +55,20 @@ export const App: React.FC = () => {
     try {
       const res = await fetch('/api/sessions');
       if (res.ok) {
-        const data = await res.json();
+        const data: RunningSession[] = await res.json();
         setSessions(data);
+        // Reconcilia activeSession: si el backend la cerró, vuelve al lanzador (evita negro huérfano)
+        setActiveSession((prev) => {
+          if (!prev) return prev;
+          const stillAlive = data.find((s) => s.id === prev.id);
+          if (!stillAlive) return null;
+          // Actualiza dimensiones/estado sin remontar StreamView si el id es el mismo
+          return stillAlive.id === prev.id &&
+            (stillAlive.width !== prev.width || stillAlive.height !== prev.height ||
+             stillAlive.isReady !== (prev as RunningSession).isReady)
+            ? { ...prev, ...stillAlive }
+            : prev;
+        });
       }
     } catch (err) {
       console.error('Error fetching sessions:', err);
@@ -75,11 +91,13 @@ export const App: React.FC = () => {
     });
   };
 
-  // Launch app with phone's exact screen dimensions
+  // Launch app with phone's exact screen dimensions (redondeadas a par para YUV420/gamescope)
   const handleLaunchApp = async (app: LinuxApp) => {
     // Detect mobile device resolution & aspect ratio
-    const width = window.innerWidth || 720;
-    const height = window.innerHeight || 1280;
+    const rawWidth = window.innerWidth || 720;
+    const rawHeight = window.innerHeight || 1280;
+    const width = Math.ceil(rawWidth / 2) * 2;
+    const height = Math.ceil(rawHeight / 2) * 2;
 
     try {
       const res = await fetch('/api/sessions/launch', {
@@ -135,6 +153,7 @@ export const App: React.FC = () => {
       <main className="flex-1 flex flex-col overflow-hidden relative">
         {activeSession ? (
           <StreamView
+            key={activeSession.id}
             session={activeSession}
             onClose={() => handleCloseSession(activeSession.id)}
             onBack={() => setActiveSession(null)}
@@ -142,7 +161,9 @@ export const App: React.FC = () => {
             sendSync={sendSync}
             sendKey={sendKey}
             attachStream={attachStream}
+            detachStream={detachStream}
             setOnVideoChunk={setOnVideoChunk}
+            isConnected={isConnected}
           />
         ) : (
           <AppGrid

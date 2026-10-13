@@ -14,6 +14,20 @@ export interface RunningSession {
   startedAt: number;
 }
 
+export type TouchType = 'down' | 'move' | 'up';
+
+// Clasifica un evento táctil por estado del slot: el protocolo 0x01 no trae
+// tipo, solo (trackingId, pressure). Sin esto el move llegaba como down repetido.
+export function classifyTouchEvent(
+  prevTrackingId: number | undefined,
+  trackingId: number,
+  pressure: number
+): TouchType {
+  if (trackingId === -1 || pressure <= 0) return 'up';
+  if (prevTrackingId === undefined || prevTrackingId === -1 || prevTrackingId !== trackingId) return 'down';
+  return 'move';
+}
+
 export class VirtualDisplayManager extends EventEmitter {
   private activeSessions = new Map<string, { session: RunningSession; proc: ChildProcess }>();
 
@@ -82,9 +96,14 @@ export class VirtualDisplayManager extends EventEmitter {
       'sh', '-c', execCmd,
     ];
 
-    // Strip outer host display variables so the app is strictly confined to gamescope
+    // Strip outer host display variables so the app is strictly confined to gamescope.
+    // Fuerza toolkits a X11: xdotool inyecta vía XTEST en el Xwayland :N y en un
+    // cliente Wayland nativo no hace absolutamente nada.
     const env = {
       ...process.env,
+      GDK_BACKEND: 'x11',
+      QT_QPA_PLATFORM: 'xcb',
+      SDL_VIDEODRIVER: 'x11',
     };
     delete env.WAYLAND_DISPLAY;
     delete env.DISPLAY;
@@ -179,6 +198,8 @@ export class VirtualDisplayManager extends EventEmitter {
   public sendPointerEvent(sessionId: string, type: 'down' | 'move' | 'up', x: number, y: number) {
     const entry = this.activeSessions.get(sessionId);
     if (!entry) return;
+    // Sin display asignado aún, DISPLAY sería :0 (el host): nunca inyectar ahí
+    if (entry.session.displayNum <= 0) return;
     const disp = `:${entry.session.displayNum}`;
     const intX = Math.round(x);
     const intY = Math.round(y);
@@ -204,6 +225,7 @@ export class VirtualDisplayManager extends EventEmitter {
   public sendKeyEvent(sessionId: string, keycode: number, isDown: boolean) {
     const entry = this.activeSessions.get(sessionId);
     if (!entry) return;
+    if (entry.session.displayNum <= 0) return;
     const disp = `:${entry.session.displayNum}`;
 
     // Map common Linux keycodes to xdotool keysyms

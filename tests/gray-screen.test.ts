@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { AppStreamer, pickPorts, buildGstArgs } from '../server/streamer.ts';
-import { VirtualDisplayManager } from '../server/virtual-display.ts';
+import { VirtualDisplayManager, classifyTouchEvent } from '../server/virtual-display.ts';
 import { readFileSync } from 'node:fs';
 
 describe('Task 1: Streamer anti-gris', () => {
-  it('getEncoderArgs usa software por defecto (vajpegenc cuelga sin codificar en muchos hosts) y HW solo con USE_VAAPI=1', () => {
+  it('getEncoderArgs usa software por defecto con quantizer constante (CBR 200kbps/qmax=31 = bloques)', () => {
     const s = new AppStreamer({ displayNum: 1, width: 1280, height: 720 });
-    expect(s.getEncoderArgs()[0]).toBe('avenc_mjpeg');
+    const args = s.getEncoderArgs();
+    expect(args[0]).toBe('avenc_mjpeg');
+    expect(args.join(' ')).toContain('pass=quant');
+    expect(args.join(' ')).toContain('quantizer=2');
+    expect(args.join(' ')).not.toContain('quality');
     s.stop();
   });
 
@@ -103,6 +107,28 @@ describe('Task 2: Virtual-display app real', () => {
     const mgr = new VirtualDisplayManager();
     expect(() => mgr.launchApp('x', 't', '', 390, 844)).toThrow();
     expect(() => mgr.launchApp('x', 't', '   ', 390, 844)).toThrow();
+  });
+
+  it('classifyTouchEvent distingue down/move/up por estado del slot (el move llegaba como down repetido)', () => {
+    expect(classifyTouchEvent(undefined, -1, 0)).toBe('up');
+    expect(classifyTouchEvent(5, -1, 128)).toBe('up');
+    expect(classifyTouchEvent(5, 5, 0)).toBe('up');
+    expect(classifyTouchEvent(undefined, 1234, 128)).toBe('down');
+    expect(classifyTouchEvent(-1, 1234, 128)).toBe('down');
+    expect(classifyTouchEvent(999, 1234, 128)).toBe('down');
+    expect(classifyTouchEvent(1234, 1234, 128)).toBe('move');
+    expect(classifyTouchEvent(0, 0, 200)).toBe('move');
+  });
+
+  it('sendPointerEvent no inyecta en :0 cuando el display aún no está asignado', () => {
+    const src = readFileSync('server/virtual-display.ts', 'utf8');
+    expect(src).toMatch(/displayNum\s*<=\s*0/);
+  });
+
+  it('las apps se fuerzan a X11 para que xdotool las alcance (Wayland ignora XTEST)', () => {
+    const src = readFileSync('server/virtual-display.ts', 'utf8');
+    expect(src).toContain('GDK_BACKEND');
+    expect(src).toContain('QT_QPA_PLATFORM');
   });
 
   it('escucha stdout además de stderr para Starting Xwayland y enfoca ventana al ready', () => {

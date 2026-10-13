@@ -112,12 +112,25 @@ apps/hydra-controller/
 
 ---
 
-## 🧪 Pruebas Automatizadas
+## 🧪 Pruebas Automatizadas y Validación
 
-Para ejecutar la batería de pruebas:
+Para ejecutar la batería de pruebas y verificaciones:
 ```bash
+# 1. Pruebas unitarias básicas
 npm test
+
+# 2. Prueba End-to-End con verificación de no-acceso a webcam
+npm run test:e2e
+
+# 3. Suite de pruebas de estrés (concurrencia, fugas de memoria y estabilidad)
+npm run test:stress
 ```
+
+---
+
+## 📖 Documentación Técnica y Troubleshooting
+
+Para detalles exhaustivos sobre la arquitectura interna, aislamiento de display, prevención de secuestro de webcam y estado del roadmap de desarrollo, consulta [GEMINI.md](file:///home/jp/Escritorio/Proyectos/HydraApps/apps/hydra-controller/GEMINI.md).
 
 ---
 

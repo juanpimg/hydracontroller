@@ -11,7 +11,9 @@
     "build:uinput": "gcc -O2 server/uinput/hydra-uinput.c -o server/uinput/hydra-uinput",
     "build": "npm run build:uinput && npm run build:ui",
     "start": "tsx server/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "node tests/e2e-stream.mjs",
+    "test:stress": "tsx tests/stress-review.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

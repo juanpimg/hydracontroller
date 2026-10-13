@@ -7,6 +7,9 @@ export interface RunningSession {
   appName: string;
   width: number;
   height: number;
+  isReady?: boolean;
+  displayNum?: number;
+  pipewireNodeId?: number;
 }
 
 interface RunningTasksProps {
