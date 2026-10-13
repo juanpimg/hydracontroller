@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AppStreamer, pickPorts, buildGstArgs } from '../server/streamer.ts';
-import { VirtualDisplayManager, classifyTouchEvent } from '../server/virtual-display.ts';
+import { VirtualDisplayManager, classifyTouchEvent, pickMainWindow, buildFitCommands } from '../server/virtual-display.ts';
 import { readFileSync } from 'node:fs';
 
 describe('Task 1: Streamer anti-gris', () => {
@@ -129,6 +129,47 @@ describe('Task 2: Virtual-display app real', () => {
     const src = readFileSync('server/virtual-display.ts', 'utf8');
     expect(src).toContain('GDK_BACKEND');
     expect(src).toContain('QT_QPA_PLATFORM');
+  });
+
+  it('pickMainWindow elige la ventana visible de mayor área (ignora root/tooltips)', () => {
+    expect(pickMainWindow([])).toBeNull();
+    expect(pickMainWindow([
+      { id: '1', w: 720, h: 1280 },
+      { id: '2', w: 640, h: 480 },
+      { id: '3', w: 34, h: 25 },
+    ])).toBe('1');
+    expect(pickMainWindow([{ id: '2', w: 640, h: 480 }])).toBe('2');
+  });
+
+  it('buildFitCommands maximiza la ventana al display (mapeo 1:1, sin escalado gamescope)', () => {
+    expect(buildFitCommands('5', 720, 1280)).toEqual([
+      ['windowsize', '5', '720', '1280'],
+      ['windowmove', '5', '0', '0'],
+      ['windowraise', '5'],
+    ]);
+  });
+
+  it('fitAfterReady busca por --class (con --name . no matchea nada: bug silencioso verificado en vivo)', () => {
+    const src = readFileSync('server/virtual-display.ts', 'utf8');
+    expect(src).toContain('fitAfterReady');
+    expect(src).not.toMatch(/search', '--onlyvisible', '--name', '\.'/);
+  });
+
+  it('el input de sesión NO se reenvía a uinput del host (fuga al escritorio real)', () => {
+    const src = readFileSync('server/index.ts', 'utf8');
+    expect(src).not.toContain('uinput.sendTouchEvent');
+    expect(src).not.toContain('uinput.sendSync');
+    expect(src).not.toContain('uinput.sendKeyEvent');
+  });
+
+  it('attach_stream re-ajusta ventanas al display (la ventana mapea tarde, display-ready llega pronto)', () => {
+    const src = readFileSync('server/index.ts', 'utf8');
+    expect(src).toContain('fitSessionWindows');
+  });
+
+  it('attach provoca un micro-movimiento (nodo idle sin damage = 0 frames para siempre)', () => {
+    const src = readFileSync('server/index.ts', 'utf8');
+    expect(src).toMatch(/sendPointerEvent\(sessionId, 'move'/);
   });
 
   it('escucha stdout además de stderr para Starting Xwayland y enfoca ventana al ready', () => {

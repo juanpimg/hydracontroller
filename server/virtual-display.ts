@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'node:child_process';
+import { spawn, ChildProcess, execFileSync } from 'node:child_process';
 import EventEmitter from 'node:events';
 
 export interface RunningSession {
@@ -28,6 +28,36 @@ export function classifyTouchEvent(
   return 'move';
 }
 
+export interface AppWindow {
+  id: string;
+  w: number;
+  h: number;
+}
+
+// Elige la ventana principal (mayor área): gamescope escala la ventana X11 al
+// output y cualquier mapeo táctil/frame deja de ser 1:1. Maximizando la ventana
+// al tamaño del display el mapeo vuelve a ser 1:1 y la imagen llena la pantalla.
+export function pickMainWindow(wins: AppWindow[]): string | null {
+  let best: string | null = null;
+  let bestArea = 0;
+  for (const w of wins) {
+    const area = w.w * w.h;
+    if (area > bestArea) {
+      bestArea = area;
+      best = w.id;
+    }
+  }
+  return best;
+}
+
+export function buildFitCommands(winId: string, width: number, height: number): string[][] {
+  return [
+    ['windowsize', winId, String(width), String(height)],
+    ['windowmove', winId, '0', '0'],
+    ['windowraise', winId],
+  ];
+}
+
 export class VirtualDisplayManager extends EventEmitter {
   private activeSessions = new Map<string, { session: RunningSession; proc: ChildProcess }>();
 
@@ -47,6 +77,49 @@ export class VirtualDisplayManager extends EventEmitter {
     const entry = this.activeSessions.get(sessionId);
     if (!entry) return false;
     return entry.proc.exitCode === null && entry.proc.killed !== true;
+  }
+
+  // Maximiza la ventana principal al tamaño del display (best-effort, nunca
+  // bloquea ni lanza): sin esto gamescope escala la ventana X11 al output,
+  // el táctil cae en otro widget y la imagen no llena la pantalla.
+  // También se llama desde attach_stream: la ventana suele mapear tarde
+  // (Qt frío ~40s) y display-ready llega pronto.
+  public fitSessionWindows(sessionId: string): void {
+    const entry = this.activeSessions.get(sessionId);
+    if (!entry) return;
+    this.fitAfterReady(entry.session.displayNum, entry.session.width, entry.session.height);
+  }
+
+  private fitAfterReady(displayNum: number, width: number, height: number): void {
+    const attempt = () => {
+      try {
+        const env = { ...process.env, DISPLAY: `:${displayNum}` };
+        const out = execFileSync('xdotool', ['search', '--onlyvisible', '--class', '.'], {
+          env, stdio: ['ignore', 'pipe', 'ignore'],
+        }).toString();
+        const wins: AppWindow[] = [];
+        for (const id of out.split(/\s+/).filter(Boolean)) {
+          try {
+            const g = execFileSync('xdotool', ['getwindowgeometry', '--shell', id], {
+              env, stdio: ['ignore', 'pipe', 'ignore'],
+            }).toString();
+            const w = parseInt(g.match(/WIDTH=(\d+)/)?.[1] || '0', 10);
+            const h = parseInt(g.match(/HEIGHT=(\d+)/)?.[1] || '0', 10);
+            if (w > 0 && h > 0) wins.push({ id, w, h });
+          } catch { /* ventana fugaz, ignora y sigue */ }
+        }
+        const main = pickMainWindow(wins);
+        if (!main) return;
+        for (const args of buildFitCommands(main, width, height)) {
+          try {
+            execFileSync('xdotool', args, { env, stdio: 'ignore' });
+          } catch { /* reintento posterior lo cubre */ }
+        }
+      } catch { /* display aún no listo, reintento posterior lo cubre */ }
+    };
+    // La app puede tardar en mapear su ventana tras display-ready (Qt frío
+    // tarda decenas de segundos): reintentos largos + trigger en attach
+    for (const ms of [500, 2000, 4000, 8000, 15000]) setTimeout(attempt, ms);
   }
 
   // Foco inicial best-effort tras display-ready (fire-and-forget, nunca bloquea
@@ -137,7 +210,9 @@ export class VirtualDisplayManager extends EventEmitter {
         console.log(`[hydra-display] Session ${sessionId} (${appName}) assigned DISPLAY=:${session.displayNum}`);
         this.emit('display-num', session);
         this.emit('display-ready', session);
-        // Foco inicial best-effort: sin app al frente gamescope compone fondo gris
+        // Ventana a tamaño display (mapeo 1:1) + foco inicial: sin app al
+        // frente gamescope compone fondo gris
+        this.fitAfterReady(session.displayNum, evenW, evenH);
         this.focusAfterReady(session.displayNum, evenW, evenH);
       }
 

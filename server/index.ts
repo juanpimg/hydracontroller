@@ -164,8 +164,11 @@ wss.on('connection', (ws: WebSocket) => {
         const x = data.readUInt16LE(4);
         const y = data.readUInt16LE(6);
         const pressure = data.readUInt8(8);
-        uinput.sendTouchEvent(slot, trackingId, x, y, pressure);
 
+        // NOTA: no se reenvía a uinput del host: ese dispositivo lo consume el
+        // compositor del HOST (clics en el escritorio real) y gamescope headless
+        // nunca lo lee. El input de sesión va solo por X11 (xdotool) con la
+        // ventana maximizada al display (mapeo 1:1).
         // Also route directly to the active virtual session's Gamescope X11 display
         if (attachedSessionId) {
           const type = classifyTouchEvent(slotTracking.get(slot), trackingId, pressure);
@@ -174,14 +177,11 @@ wss.on('connection', (ws: WebSocket) => {
           displayManager.sendPointerEvent(attachedSessionId, type, x, y);
         }
       } else if (packetType === 0x02 && data.length >= 2) {
-        // Sync Event
-        const activeCount = data.readUInt8(1);
-        uinput.sendSync(activeCount);
+        // Sync Event: solo tracking local, sin uinput (ver nota arriba)
       } else if (packetType === 0x03 && data.length >= 4) {
         // Key Event
         const keycode = data.readUInt16LE(1);
         const isDown = data.readUInt8(3) === 1;
-        uinput.sendKeyEvent(keycode, isDown);
         if (attachedSessionId) {
           displayManager.sendKeyEvent(attachedSessionId, keycode, isDown);
         }
@@ -236,7 +236,18 @@ wss.on('connection', (ws: WebSocket) => {
                 if (fresh.pipewireNodeId) {
                   streamer.updatePipewireNodeId(fresh.pipewireNodeId);
                 }
+                // La ventana mapea tarde: re-ajusta al display en cada attach
+                displayManager.fitSessionWindows(sessionId);
                 streamer.addClient(ws);
+                // El nodo PipeWire queda idle con contenido estático (0 frames
+                // hasta el primer damage): un micro-movimiento provoca
+                // hover/redraw y arranca el stream sin efectos visibles
+                try {
+                  const cx = Math.round((fresh.width || 720) / 2);
+                  const cy = Math.round((fresh.height || 1280) / 2);
+                  displayManager.sendPointerEvent(sessionId, 'move', cx + 8, cy);
+                  displayManager.sendPointerEvent(sessionId, 'move', cx, cy);
+                } catch { /* input best-effort, nunca rompe el attach */ }
               }
             };
 
