@@ -50,26 +50,24 @@ export interface GstArgsOptions {
 }
 
 export function buildGstArgs(opts: GstArgsOptions): string[] {
-  // Dimensiones siempre pares (YUV420/gamescope lo exigen; idempotente si ya vienen pares)
-  const width = Math.ceil(opts.width / 2) * 2;
-  const height = Math.ceil(opts.height / 2) * 2;
-  const fps = Math.max(30, opts.fps ?? 30);
+  // Pipeline mínimo probado en vivo (probe2: 187KB MJPEG reales).
+  // Sin videoscale ni framerate pineado: ambos stalleaban la negociación
+  // (0 frames con link OK). Sin target-object con node-id (propiedad de
+  // portal serial, no de node id → sin fuente). El link va por pw-link
+  // explícito (pickPorts + tryLink).
   return [
     'pipewiresrc',
-    ...(opts.pipewireNodeId ? [`target-object=${opts.pipewireNodeId}`] : []),
     'autoconnect=false',
     `client-name=${opts.clientName}`,
     'keepalive-time=1000',
     '!',
-    `video/x-raw,format=BGRx,width=${width},height=${height},framerate=${fps}/1`,
+    'video/x-raw',
     '!',
     'queue',
     'max-size-buffers=3',
     'leaky=downstream',
     '!',
     'videoconvert',
-    '!',
-    'videoscale',
     '!',
     ...opts.encoderArgs,
     '!',
@@ -85,7 +83,10 @@ export class AppStreamer extends EventEmitter {
   private isStopping = false;
   private restartTimeout: NodeJS.Timeout | null = null;
   private pipewireFailures = 0;
-  private useSoftwareEncoder = false;
+  // vajpegenc (VAAPI) cuelga sin codificar en muchos hosts (CRITICAL denom!=0,
+  // 378B y stall en vez de exit → el fallback por exit jamás salta). Por eso
+  // el default es software; HW solo con USE_VAAPI=1 explícito.
+  private useSoftwareEncoder = process.env.USE_VAAPI === '1' ? false : true;
 
   constructor(private options: StreamerOptions) {
     super();
@@ -96,8 +97,9 @@ export class AppStreamer extends EventEmitter {
   }
 
   public getEncoderArgs(): string[] {
+    // avenc_mjpeg NO tiene propiedad quality (solo qmin/qmax) → pasarla mata gst al instante
     return this.useSoftwareEncoder
-      ? ['avenc_mjpeg', 'quality=85']
+      ? ['avenc_mjpeg']
       : ['vajpegenc', 'quality=85'];
   }
 
@@ -126,8 +128,8 @@ export class AppStreamer extends EventEmitter {
     this.options.pipewireNodeId = pipewireNodeId;
     this.pipewireFailures = 0;
     // Si el encoder HW falló antes pero ahora hay nodo nuevo, reintenta HW una vez
-    // (si vuelve a fallar, el contador lo devolverá a software)
-    if (this.useSoftwareEncoder && prevNodeId !== pipewireNodeId) {
+    // solo cuando HW es opt-in (USE_VAAPI=1); si no, quédate en software.
+    if (this.useSoftwareEncoder && prevNodeId !== pipewireNodeId && process.env.USE_VAAPI === '1') {
       this.useSoftwareEncoder = false;
     }
     // If we received a new or updated PipeWire node ID while streaming,

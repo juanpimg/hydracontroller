@@ -4,49 +4,46 @@ import { VirtualDisplayManager } from '../server/virtual-display.ts';
 import { readFileSync } from 'node:fs';
 
 describe('Task 1: Streamer anti-gris', () => {
-  it('getEncoderArgs usa HW por defecto y software tras 2 fallos', () => {
+  it('getEncoderArgs usa software por defecto (vajpegenc cuelga sin codificar en muchos hosts) y HW solo con USE_VAAPI=1', () => {
     const s = new AppStreamer({ displayNum: 1, width: 1280, height: 720 });
-    expect(s.getEncoderArgs()[0]).toBe('vajpegenc');
-    (s as any).recordFailure();
-    (s as any).recordFailure();
     expect(s.getEncoderArgs()[0]).toBe('avenc_mjpeg');
     s.stop();
   });
 
-  it('pipeline incluye caps explícitas + queue leaky + convert/scale y sin jpegenc', () => {
+  it('pipeline incluye queue leaky + convert/scale y sin jpegenc (caps loose, sin pinar formato)', () => {
     const src = readFileSync('server/streamer.ts', 'utf8');
     expect(src).toContain('videoconvert');
     expect(src).toContain('videoscale');
     expect(src).toContain('leaky=downstream');
     expect(src).toContain('max-size-buffers=3');
-    expect(src).toContain('format=BGRx');
-    expect(src).toContain('framerate=');
     expect(src).toContain('avenc_mjpeg');
     expect(src.includes("'jpegenc'")).toBe(false);
     expect(src.includes('"jpegenc"')).toBe(false);
   });
 
-  it('buildGstArgs genera el pipeline real con caps + queue leaky + encoder (sin spawnear gst)', () => {
+  it('buildGstArgs pipeline mínimo probado en vivo (187KB con probe2): sin videoscale ni framerate pineado que stallean la negociación', () => {
     const hw = buildGstArgs({ width: 1280, height: 720, fps: 30, clientName: 'hydra_x', encoderArgs: ['vajpegenc', 'quality=85'] });
     const s = hw.join(' ');
-    expect(s).toContain('video/x-raw,format=BGRx,width=1280,height=720,framerate=30/1');
+    expect(s).toContain('video/x-raw');
+    expect(s).not.toContain('format=BGRx');
+    expect(s).not.toContain('width=1280');
+    expect(s).not.toContain('target-object');
+    expect(s).not.toContain('videoscale');
+    expect(s).not.toContain('framerate=');
     expect(s).toContain('queue max-size-buffers=3 leaky=downstream');
     expect(s).toContain('videoconvert');
-    expect(s).toContain('videoscale');
     expect(s).toContain('vajpegenc');
-    expect(s).not.toContain('target-object');
-    // orden: caps antes de queue, queue antes de convert/scale, encoder antes de fdsink
-    expect(s.indexOf('video/x-raw,format=BGRx')).toBeLessThan(s.indexOf('queue'));
+    // orden: caps loose antes de queue, queue antes de convert, encoder antes de fdsink
+    expect(s.indexOf('video/x-raw')).toBeLessThan(s.indexOf('queue'));
     expect(s.indexOf('leaky=downstream')).toBeLessThan(s.indexOf('videoconvert'));
-    expect(s.indexOf('videoscale')).toBeLessThan(s.indexOf('vajpegenc'));
+    expect(s.indexOf('videoconvert')).toBeLessThan(s.indexOf('vajpegenc'));
     expect(s.indexOf('vajpegenc')).toBeLessThan(s.indexOf('fdsink'));
-    // software + nodeId + impares → target-object, redondeo a par, avenc_mjpeg
-    const sw = buildGstArgs({ width: 393, height: 841, fps: 30, pipewireNodeId: 42, clientName: 'hydra_x', encoderArgs: ['avenc_mjpeg', 'quality=85'] });
+    // software → sin target-object, avenc_mjpeg sin quality (el link va por pw-link explícito)
+    const sw = buildGstArgs({ width: 393, height: 841, fps: 30, pipewireNodeId: 42, clientName: 'hydra_x', encoderArgs: ['avenc_mjpeg'] });
     const ss = sw.join(' ');
-    expect(ss).toContain('target-object=42');
-    expect(ss).toContain('width=394');
-    expect(ss).toContain('height=842');
+    expect(ss).not.toContain('target-object');
     expect(ss).toContain('avenc_mjpeg');
+    expect(ss).not.toContain('quality');
   });
 
   it('startProcess cablea getEncoderArgs al pipeline (sin spawnear gst)', () => {
