@@ -67,6 +67,38 @@ export function buildFitCommands(winId: string, width: number, height: number): 
   ];
 }
 
+// Mapa keycode evdev -> keysym X11 para xdotool.
+// Letras: KEY_A=30 ... KEY_Z=44. Dígitos fila superior: KEY_1=2 ... KEY_0=11.
+const EVDEV_TO_KEYSYM: Record<number, string> = {
+  1: 'Escape',
+  2: '1', 3: '2', 4: '3', 5: '4', 6: '5', 7: '6', 8: '7', 9: '8', 10: '9', 11: '0',
+  12: 'minus', 13: 'equal',
+  14: 'BackSpace',
+  15: 'Tab',
+  16: 'q', 17: 'w', 18: 'e', 19: 'r', 20: 't', 21: 'y', 22: 'u', 23: 'i',
+  24: 'o', 25: 'p',
+  26: 'bracketleft', 27: 'bracketright',
+  28: 'Return',
+  29: 'Control_L',
+  30: 'a', 31: 's', 32: 'd', 33: 'f', 34: 'g', 35: 'h', 36: 'j', 37: 'k', 38: 'l',
+  39: 'semicolon', 40: 'apostrophe',
+  41: 'grave',
+  42: 'Shift_L',
+  43: 'backslash',
+  44: 'z', 45: 'x', 46: 'c', 47: 'v', 48: 'b', 49: 'n', 50: 'm',
+  51: 'comma', 52: 'period', 53: 'slash',
+  56: 'Alt_L',
+  57: 'space',
+  103: 'Up',
+  105: 'Left',
+  106: 'Right',
+  108: 'Down',
+};
+
+export function keycodeToKeysym(keycode: number): string | undefined {
+  return EVDEV_TO_KEYSYM[keycode];
+}
+
 export class VirtualDisplayManager extends EventEmitter {
   private activeSessions = new Map<string, { session: RunningSession; proc: ChildProcess }>();
 
@@ -349,23 +381,7 @@ export class VirtualDisplayManager extends EventEmitter {
     if (entry.session.displayNum <= 0) return;
     const disp = `:${entry.session.displayNum}`;
 
-    // Map common Linux keycodes to xdotool keysyms
-    const keyMap: Record<number, string> = {
-      1: 'Escape',
-      14: 'BackSpace',
-      15: 'Tab',
-      28: 'Return',
-      29: 'Control_L',
-      42: 'Shift_L',
-      56: 'Alt_L',
-      57: 'space',
-      103: 'Up',
-      105: 'Left',
-      106: 'Right',
-      108: 'Down',
-    };
-
-    const keyName = keyMap[keycode];
+    const keyName = keycodeToKeysym(keycode);
     if (keyName && isDown) {
       spawn('xdotool', ['key', keyName], {
         env: { ...process.env, DISPLAY: disp },

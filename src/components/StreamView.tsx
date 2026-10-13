@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { RunningSession } from './RunningTasks.tsx';
 import { StreamControls } from './StatusBar.tsx';
 import { shouldDropFrame } from '../lib/frame-guard.ts';
+import { webKeyToLinuxCode } from '../lib/keymap.ts';
 import { canUseFullscreen, isStandaloneDisplay } from '../lib/fullscreen.ts';
 
 interface StreamViewProps {
@@ -259,26 +260,7 @@ export const StreamView: React.FC<StreamViewProps> = ({
 
   // Mobile Native Keyboard Handler
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Map web key event to Linux input_event keycode
-    // Common mappings: Backspace=14, Enter=28, Space=57, etc.
-    let code = 0;
-    if (e.key === 'Backspace') code = 14;
-    else if (e.key === 'Enter') code = 28;
-    else if (e.key === ' ') code = 57;
-    else if (e.key === 'Escape') code = 1;
-    else if (e.key === 'Tab') code = 15;
-    else {
-      // Basic ASCII letter/number
-      const charCode = e.key.toUpperCase().charCodeAt(0);
-      if (charCode >= 65 && charCode <= 90) {
-        // A..Z keycodes 30..38, etc.
-        const letters = 'QWERTYUIOPASDFGHJKLZXCVBNM';
-        const keycodes = [16,17,18,19,20,21,22,23,24,25,30,31,32,33,34,35,36,37,38,44,45,46,47,48,49,50];
-        const idx = letters.indexOf(e.key.toUpperCase());
-        if (idx !== -1) code = keycodes[idx];
-      }
-    }
-
+    const code = webKeyToLinuxCode(e.key);
     if (code > 0) {
       sendKey(code, true);
       setTimeout(() => sendKey(code, false), 50);
