@@ -126,3 +126,11 @@ npm test
 Servidor solo para tu red local (LAN). Los certificados TLS se generan en tu máquina
 (`.certs/`, ignorado en `.gitignore`) y **nunca deben subirse a GitHub**. Sin cuentas,
 sin nube: ningún secreto en el repo (`.env*`, `*.pem`, `*.key` ignorados).
+
+---
+
+## ⚖️ Aviso legal
+
+- **Ámbito de uso:** úsalo únicamente en equipos y redes propios o de confianza. El servidor requiere permisos sensibles del sistema (grupo `input`, `/dev/uinput`), ejecuta aplicaciones en tu máquina y expone un puerto HTTPS en tu red local: no lo expongas a Internet.
+- **Certificado autofirmado:** verifica la dirección y la huella del certificado antes de conectar tus dispositivos.
+- **Sin garantías:** software "tal cual" (licencia MIT). El autor no responde de daños directos o indirectos, pérdidas de datos ni accesos no autorizados derivados de su instalación, configuración o uso. La responsabilidad es exclusivamente tuya.
