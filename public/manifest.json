@@ -1,0 +1,17 @@
+{
+  "name": "Hydra Controller",
+  "short_name": "Hydra Deck",
+  "description": "Lanzador móvil táctil de ultra-baja latencia para tu PC Linux",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090e",
+  "theme_color": "#06b6d4",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

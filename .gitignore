@@ -1,0 +1,33 @@
+# deps
+node_modules/
+
+# build
+dist/
+dist-ssr/
+
+# secrets / env — nunca subir claves ni certificados locales
+.env*
+!.env.example
+.certs/
+*.pem
+*.key
+
+# locales / OS / logs
+*.local
+*.log
+npm-debug.log*
+.DS_Store
+
+# test artefacts
+test-artifacts/
+
+# herramientas locales de agentes / review (contienen rutas absolutas)
+.agents/
+.code-review-graph/
+
+# editores
+.vscode/*
+.idea/
+
+# binario nativo compilado (npm run build:uinput lo regenera)
+server/uinput/hydra-uinput
