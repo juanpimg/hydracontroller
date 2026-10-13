@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hydra Controller — Tu PC Linux en el móvil</title>
+  <meta name="description" content="Convierte tu móvil en una pantalla táctil para tu PC Linux. Sesiones aisladas con gamescope, streaming en tiempo real y código abierto (MIT). Sin nube, sin cuentas: solo tu red local." />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2307090e'/%3E%3Cpath d='M10 8v16M22 8v16M10 16h12' stroke='%2306b6d4' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="#top"><span class="brand-mark">H</span> Hydra Controller</a>
+    <nav>
+      <a href="#como-funciona">Cómo funciona</a>
+      <a href="#instalar">Instalar</a>
+      <a href="#contribuir" class="nav-cta">Contribuir</a>
+      <a href="https://github.com/juanpimg/hydracontroller" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="kicker">Código abierto · Licencia MIT · Solo red local</p>
+        <h1>Tu PC Linux,<br />en la palma de <span class="accent">tu mano</span>.</h1>
+        <p class="lede">Hydra Controller convierte tu móvil o tablet en una pantalla táctil dedicada para tu ordenador: abre tus apps de Linux en sesiones aisladas, míralas en tiempo real y contrólalas con los dedos. Sin duplicar tu monitor. Sin nube. Sin cuentas.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="https://github.com/juanpimg/hydracontroller" target="_blank" rel="noopener">Ver el código</a>
+          <a class="btn ghost" href="#instalar">Instalar en 5 minutos</a>
+        </div>
+        <ul class="ticks">
+          <li>Sesiones virtuales aisladas (tu escritorio no se toca)</li>
+          <li>Multitouch real de hasta 10 dedos</li>
+          <li>Cero datos fuera de tu Wi-Fi</li>
+        </ul>
+      </div>
+      <div class="hero-phone" aria-hidden="true">
+        <div class="phone">
+          <div class="phone-bar"><span>HYDRA DECK</span><span class="lat">7 ms</span></div>
+          <div class="phone-grid">
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+          </div>
+          <div class="phone-stream"><span class="play">▶</span><p>kcalc · 720×1280 @ 30fps</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="como-funciona" class="section">
+      <h2>Cómo funciona</h2>
+      <p class="section-sub">Tres piezas simples, todo en tu red local.</p>
+      <ol class="steps">
+        <li><strong>1 · Instala el servidor</strong><span>Un comando en tu PC Linux. Genera su propio certificado TLS y te muestra un QR.</span></li>
+        <li><strong>2 · Escanea y toca</strong><span>Abres la web en el móvil, eliges una app y se lanza en un display virtual propio.</span></li>
+        <li><strong>3 · Mírala y contrólala</strong><span>El vídeo llega por WebSocket y tus dedos vuelven como eventos de ratón y teclado.</span></li>
+      </ol>
+      <pre class="diagram">Móvil (PWA) ──HTTPS/WSS :4096──▶ Servidor Node
+                                        ├─ gamescope headless (display :N aislado)
+                                        ├─ GStreamer + PipeWire ──▶ MJPEG ──▶ móvil
+                                        └─ tus dedos ──▶ xdotool ──▶ app</pre>
+    </section>
+
+    <section class="section">
+      <h2>Hecho para trastear</h2>
+      <div class="cards">
+        <article><h3>Sesiones aisladas</h3><p>Cada app corre en su propio display virtual. Tu monitor principal ni se entera.</p></article>
+        <article><h3>Táctil de verdad</h3><p>Puntero multitouch, teclado nativo del móvil y botones de control flotantes.</p></article>
+        <article><h3>Tiempo real</h3><p>Captura por PipeWire y JPEG por WebSocket con control de congestión. Sin nube de por medio.</p></article>
+        <article><h3>Emparejado por QR</h3><p>TLS autofirmado generado en tu máquina. Escaneas y entras.</p></article>
+        <article><h3>Probado en serio</h3><p>Suite de tests unitarios, e2e con detección de frame gris y pruebas de estrés.</p></article>
+        <article><h3>MIT de verdad</h3><p>Léelo, modifícalo, úsalo. Sin telemetría y sin letra pequeña.</p></article>
+      </div>
+    </section>
+
+    <section id="instalar" class="section">
+      <h2>Instálalo hoy</h2>
+      <p class="section-sub">Linux con gamescope y Node.js. Cinco minutos.</p>
+      <pre class="code">sudo pacman -S gcc make ffmpeg gamescope nodejs npm   # o apt/dnf equivalentes
+sudo usermod -aG input $USER   # permiso para /dev/uinput (opcional)
+npm install && npm run build
+npm start   # escanea el QR con el móvil (misma Wi-Fi)</pre>
+      <p>Guía completa paso a paso, desarrollo local y solución de problemas en el <a href="https://github.com/juanpimg/hydracontroller/blob/main/README.md" target="_blank" rel="noopener">README del repositorio</a>.</p>
+    </section>
+
+    <section id="contribuir" class="section contribute">
+      <h2>Nos vendría genial tu ayuda</h2>
+      <p class="section-sub">Hydra Controller lo levanta gente como tú, en ratos libres. No hace falta ser experto en todo: hay tareas pequeñas y bien delimitadas.</p>
+      <div class="cards">
+        <article><h3>⌨️ Teclado completo</h3><p>Ampliar el mapa de teclas (hoy faltan letras A-Z) para escribir de todo desde el móvil.</p></article>
+        <article><h3>🎬 Mejor vídeo</h3><p>Probar H.264/WebRTC de verdad frente al MJPEG actual y medir latencia.</p></article>
+        <article><h3>👆 Input Wayland</h3><p>Llevar el táctil a apps Wayland nativas más allá del puente X11 actual.</p></article>
+        <article><h3>🧪 Tests y docs</h3><p>End-to-end en hardware real, guías y traducciones. Ideal primera contribución.</p></article>
+      </div>
+      <ol class="steps mini">
+        <li><strong>Haz fork</strong><span>del repo y clónalo en tu máquina.</span></li>
+        <li><strong>Crea una rama</strong><span>con un nombre claro: <code>fix/…</code>, <code>feat/…</code>.</span></li>
+        <li><strong>Abre un PR</strong><span>contando qué probaste en hardware real. Lo revisamos y lo celebramos.</span></li>
+      </ol>
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/juanpimg/hydracontroller/issues" target="_blank" rel="noopener">Ver issues abiertos</a>
+        <a class="btn ghost" href="https://github.com/juanpimg/hydracontroller/fork" target="_blank" rel="noopener">Hacer fork</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p><strong>Hydra Controller</strong> · Licencia MIT · Solo para redes locales de confianza. No lo expongas a Internet.</p>
+    <p><a href="https://github.com/juanpimg/hydracontroller" target="_blank" rel="noopener">GitHub</a> · Hecho con gamescope, GStreamer, PipeWire y React.</p>
+  </footer>
+</body>
+</html>

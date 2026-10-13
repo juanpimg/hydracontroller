@@ -1,149 +1,157 @@
 # 📱 Hydra Controller — Linux Mobile Deck
 
-[![LAN-Only](https://img.shields.io/badge/Network-LAN%20Only-orange)](#)
-[![Privacy](https://img.shields.io/badge/Privacy-Zero%20Data%20Collected-blue)](#)
+[![LAN-Only](https://img.shields.io/badge/Network-LAN%20Only-orange)](#-seguridad)
+[![Privacy](https://img.shields.io/badge/Privacy-Zero%20Data%20Collected-blue)](#-seguridad)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 
-> **Convierte tu smartphone o tablet en un escritorio táctil dedicado y ultra-rápido para tu ordenador Linux, sin duplicar ni interferir con tu pantalla principal.**
+> **Convierte tu smartphone o tablet en una pantalla táctil dedicada para tu PC Linux, sin duplicar ni interferir con tu pantalla principal.**
+
+🌐 **Web del proyecto:** desplegada con Cloudflare Pages desde [`landing/`](./landing/) — ábrela, personalízala y publícala con tus cambios.
 
 ---
 
-## ⚡ Características Principales
+## ⚡ Qué hace
 
-- **Sesión Virtual Dedicada e Independiente**:
-  - No duplica tu pantalla: ejecuta las aplicaciones en un compositor virtual aislado (`gamescope` en modo headless) ajustado pixel a pixel a la resolución, DPI y orientación de tu móvil.
-  - Tu pantalla principal y tus ventanas normales del PC quedan 100% libres y sin interrupciones.
+- **Sesiones virtuales aisladas**: cada app se lanza en su propio display virtual con `gamescope` headless, a la resolución de tu móvil (siempre en pares). Tu escritorio principal no se toca.
+- **Streaming en tiempo real**: captura por PipeWire (`pipewiresrc`) y JPEG por WebSocket binario, con control de congestión. Sin nube de por medio.
+- **Táctil real**: multitouch (hasta 10 dedos), teclado nativo del móvil y botones flotantes (atrás, teclado, pantalla completa, cerrar).
+- **Lanzador PWA**: catálogo de tus apps `.desktop` con iconos, búsqueda, categorías y favoritos; multitarea para saltar entre sesiones.
+- **Emparejado por QR**: TLS autofirmado generado en tu máquina + código QR en la terminal. Misma Wi-Fi y a jugar.
+- **Tests que muerden**: unitarios (Vitest), e2e con detección de frame gris/negro y suite de estrés.
 
-- **Lanzador Web / PWA Táctil Nativo**:
-  - Interfaz moderna, fluida y adaptada a dedos con la estética del ecosistema Hydra Apps.
-  - Escaneo automático de todas las aplicaciones `.desktop` instaladas en tu sistema Linux con iconos de alta resolución y filtro por categorías (Internet, Multimedia, Sistema, Desarrollo, etc.).
-  - Favoritos fijables con estrella y gestor multitarea para cambiar de ventana al instante.
-
-- **Emulación Táctil Pura Absoluta (`/dev/uinput`)**:
-  - Convierte los eventos táctiles del navegador en eventos de hardware reales en el kernel de Linux (`EV_ABS`, slots multitouch `ABS_MT_POSITION_X` / `ABS_MT_POSITION_Y`).
-  - Mapeo nativo hasta 10 dedos simultáneos: pellizcar para hacer zoom, deslizamientos, botones y gestos responden de forma 100% nativa.
-
-- **Streaming WebRTC / WebCodecs de Ultra-Baja Latencia (<30ms)**:
-  - Transmisión en tiempo real en H.264 acelerado por hardware (NVENC para NVIDIA o VA-API para Intel/AMD).
-  - Decodificación por hardware inmediata en el navegador móvil mediante la API WebCodecs.
-
-- **Audio Conmutable con PipeWire**:
-  - Escucha el audio de tus aplicaciones directamente en los altavoces o auriculares de tu móvil mediante compresión Opus de baja latencia, o conmútalo a los altavoces de tu PC con un solo toque.
-
-- **Teclado Nativo Móvil**:
-  - Botón integrado para desplegar el teclado de tu móvil (Gboard, iOS keyboard, etc.) e introducir texto directamente en terminales, navegadores o editores.
-
-- **Emparejamiento Instantáneo por Código QR**:
-  - El servidor genera automáticamente certificados TLS autofirmados para garantizar acceso seguro y muestra un código QR en la terminal para conectar al instante desde la misma red Wi-Fi.
+> Estado honesto del proyecto: el vídeo hoy es **MJPEG sobre WebSocket** (no WebRTC/H.264 todavía) y la entrada viaja sobre todo por **X11/xdotool** (las apps se fuerzan a X11). Hay una [lista de ideas para contribuir](#-contribuir) si quieres llevarlo más lejos.
 
 ---
 
-## 🚀 Inicio Rápido
+## 🧰 Requisitos
 
-### 1. Requisitos Previos
+- **Linux** con Node.js 20+, `npm`, `gcc`/`make`, `ffmpeg`, `gamescope`, `gstreamer` (plugins base + `avenc_mjpeg` vía libav), `xdotool`, `pw-dump`/`pw-link` (PipeWire) y un emulador de terminal (p. ej. `alacritty` para apps de consola).
 
-En distribuciones basadas en Arch Linux / Fedora / Ubuntu:
 ```bash
-# Compilador y herramientas básicas
-sudo pacman -S gcc make ffmpeg gamescope nodejs npm
+# Arch / CachyOS
+sudo pacman -S gcc make ffmpeg gamescope nodejs npm gstreamer gst-libav xdotool pipewire alacritty
+
+# Ubuntu / Debian (nombres orientativos)
+sudo apt install gcc make ffmpeg gamescope nodejs npm gstreamer1.0-libav xdotool pipewire alacritty
+
+# Fedora (nombres orientativos)
+sudo dnf install gcc make ffmpeg gamescope nodejs npm gstreamer1-libav xdotool pipewire alacritty
 ```
 
-> **Permisos de uinput**: Asegúrate de que tu usuario tenga permisos de lectura y escritura en `/dev/uinput` (generalmente perteneciendo al grupo `input`):
+> **Permisos de `/dev/uinput`** (solo si quieres el puente táctil experimental del host):
 > ```bash
-> sudo usermod -aG input $USER
+> sudo usermod -aG input $USER  # y vuelve a iniciar sesión
 > ```
 
-### 2. Instalación y Compilación
+---
 
-Dentro del directorio `apps/hydra-controller`:
-```bash
-# Instalar dependencias
-npm install
+## 🚀 Instalación y uso
 
-# Compilar el puente táctil nativo y la interfaz web PWA
-npm run build
-```
-
-### 3. Iniciar el Servidor
+Dentro de `apps/hydra-controller`:
 
 ```bash
-npm start
+npm install          # dependencias
+npm run build        # puente uinput (gcc) + interfaz web (tsc + vite)
+npm start            # servidor HTTPS en :4096 + QR en la terminal
 ```
 
-En la consola aparecerá un código QR con la dirección local (por ejemplo `https://192.168.1.145:8443` y `https://hydra.local:8443`).
+### Conectar el móvil
 
-### 4. Conectar desde el Móvil
+1. Móvil y PC en la **misma Wi-Fi**.
+2. Escanea el QR de la terminal (o abre `https://<IP-del-PC>:4096` / `https://hydra.local:4096`).
+3. Acepta el certificado autofirmado (se genera en `.certs/`, nunca se sube a git).
+4. Opcional: “Añadir a pantalla de inicio” para modo pantalla completa.
+5. Toca una app: se abre maximizada al tamaño de tu pantalla y los toques caen 1:1.
 
-1. Asegúrate de que tu móvil esté conectado a la **misma red Wi-Fi** que tu PC.
-2. Abre la cámara de tu teléfono y escanea el código QR que muestra la terminal (o introduce la dirección en Safari / Chrome).
-3. Acepta el certificado autofirmado local.
-4. *(Opcional)* Toca en **"Añadir a la pantalla de inicio"** para usarlo como aplicación independiente a pantalla completa.
-5. ¡Toca cualquier aplicación para abrirla en una sesión dedicada y disfrutar de la experiencia táctil nativa!
+### Desarrollo local
+
+```bash
+npm run dev:all     # vite en :5173 (con proxy a /api y /ws) + backend en :4096
+```
+
+Abre `http://127.0.0.1:5173`: el proxy de `vite.config.ts` reenvía la API y el WebSocket al backend real, así puedes probar el flujo completo desde el PC.
 
 ---
 
-## 📂 Arquitectura del Proyecto
+## 🧪 Tests
+
+```bash
+npm test             # unitarios (Vitest): scanner, certs, uinput, pantalla gris/negra, táctil, fit
+npm run test:e2e     # streaming real + verificación de contenido (falla con GRAY_FRAME si sale gris)
+npm run test:stress  # concurrencia, backpressure y limpieza de sesiones
+```
+
+---
+
+## 📂 Estructura
 
 ```
 apps/hydra-controller/
+├── landing/                  # Web estática del proyecto (Cloudflare Pages: sin build, carpeta landing/)
 ├── server/
-│   ├── index.ts                # Daemon principal Express + HTTPS + WebSockets
-│   ├── app-scanner.ts          # Indexador de aplicaciones .desktop y resolución de iconos
-│   ├── certs.ts                # Generador automático de certificados TLS locales
-│   ├── qr.ts                   # Generador de códigos QR y detección de IP en red local
-│   ├── streamer.ts             # Pipeline de streaming H.264 de ultra-baja latencia
-│   ├── virtual-display.ts      # Gestor de sesiones virtuales con Gamescope
-│   ├── uinput-bridge.ts        # Controlador Node para el puente de eventos táctiles
-│   └── uinput/
-│       └── hydra-uinput.c      # Driver nativo en C para el kernel Linux (/dev/uinput)
+│   ├── index.ts              # Express + HTTPS + WebSocket /ws, sesiones REST, input binario
+│   ├── virtual-display.ts    # Gamescope headless, parseo Xwayland/PipeWire, fit de ventana, input xdotool
+│   ├── streamer.ts           # GStreamer pipewiresrc → MJPEG → frames JPEG por WS
+│   ├── app-scanner.ts        # Apps .desktop + iconos
+│   ├── certs.ts / qr.ts      # TLS autofirmado + QR de emparejado
+│   └── uinput-bridge.ts + uinput/hydra-uinput.c  # Puente /dev/uinput (experimental, sin reenvío)
 ├── src/
-│   ├── App.tsx                 # Coordinador principal (Lanzador vs Streaming)
-│   ├── components/
-│   │   ├── AppGrid.tsx         # Catálogo de aplicaciones con búsqueda y categorías
-│   │   ├── RunningTasks.tsx    # Barra multitarea inferior y cierre de sesiones
-│   │   ├── StatusBar.tsx       # Latencia en vivo, audio toggle y estado de red
-│   │   └── StreamView.tsx      # Visor táctil a 60 FPS con teclado nativo
-│   ├── hooks/
-│   │   └── useHydraSocket.ts   # Conexión WebSocket y paquetes binarios táctiles
-│   └── styles/
-│       └── index.css           # Estilos Tailwind y optimizaciones touch-none
-└── tests/                      # Suite de pruebas automatizadas con Vitest
+│   ├── App.tsx               # Lanzador vs streaming, sesiones, favoritos
+│   ├── components/           # StatusBar, AppGrid, StreamView (canvas), RunningTasks
+│   ├── hooks/useHydraSocket.ts  # WS, ping/latencia, attach con cola, chunks de vídeo
+│   └── lib/frame-guard.ts    # Descarte de frames rotos/grises
+└── tests/                    # Vitest + e2e (mjs) + estrés
 ```
 
 ---
 
-## 🧪 Pruebas Automatizadas y Validación
+## 🩺 Problemas comunes
 
-Para ejecutar la batería de pruebas y verificaciones:
+| Síntoma | Causa probable | Qué hacer |
+|---|---|---|
+| Pantalla negra al abrir | El nodo PipeWire tarda o el contenido está estático | Espera unos segundos: el servidor reintenta el enlace y provoca redraw al adjuntar |
+| Todo gris | La app no dibuja (falló su `Exec`, terminal sin emulador) | Revisa el log `[hydra-display]`; las apps de consola se envuelven con `alacritty -e` |
+| Clicks caen en otro sitio | Ventana aún sin maximizar (apps lentas) | El servidor la maximiza solo (polling hasta 120s); si persiste, mira `xdotool search` en `:N` |
+| Clicks en tu escritorio real | Reenvío uinput antiguo | Actualiza: desde `ea6d50a` el input de sesión ya no va al host |
+| Certificado rechazado | Autofirmado | Acepta la excepción una vez; verifica IP y huella; renueva borrando `.certs/` |
+| `vite` dev sin apps/WS | Sin backend | Arranca también el backend (`npm run dev:all`) o usa `npm start` |
+
+Más detalle técnico en [`GEMINI.md`](./GEMINI.md).
+
+---
+
+## 🤝 Contribuir
+
+¡Nos vendría genial tu ayuda! Ideas con hueco hecho:
+
+- **Teclado completo**: faltan las letras A-Z en el mapa de `sendKeyEvent`.
+- **Vídeo H.264/WebRTC** frente al MJPEG actual, con medición de latencia.
+- **Input Wayland nativo** más allá del puente X11.
+- **Tests en hardware real**, guías y traducciones (primera contribución ideal).
+
+Pasos: fork → rama (`fix/…`, `feat/…`) → PR contando qué probaste en hardware real. Issues y código en <https://github.com/juanpimg/hydracontroller>.
+
+La landing también acepta mejoras: edita [`landing/`](./landing/) y previsualízala con cualquier servidor estático:
+
 ```bash
-# 1. Pruebas unitarias básicas
-npm test
-
-# 2. Prueba End-to-End con verificación de no-acceso a webcam
-npm run test:e2e
-
-# 3. Suite de pruebas de estrés (concurrencia, fugas de memoria y estabilidad)
-npm run test:stress
+cd landing && python3 -m http.server 8080  # http://127.0.0.1:8080
 ```
 
----
+### Desplegar la landing en Cloudflare Pages
 
-## 📖 Documentación Técnica y Troubleshooting
-
-Para detalles exhaustivos sobre la arquitectura interna, aislamiento de display, prevención de secuestro de webcam y estado del roadmap de desarrollo, consulta [GEMINI.md](file:///home/jp/Escritorio/Proyectos/HydraApps/apps/hydra-controller/GEMINI.md).
+1. Sube el repo a GitHub.
+2. En Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git.
+3. Build command: *(vacío)* · Output directory: `apps/hydra-controller/landing` (o `landing` si publicas el monorepo desde esa carpeta).
+4. Deploy: cada push a `main` republica sola.
 
 ---
 
 ## 🔒 Seguridad
 
-Servidor solo para tu red local (LAN). Los certificados TLS se generan en tu máquina
-(`.certs/`, ignorado en `.gitignore`) y **nunca deben subirse a GitHub**. Sin cuentas,
-sin nube: ningún secreto en el repo (`.env*`, `*.pem`, `*.key` ignorados).
+Solo red local (LAN): nunca lo expongas a Internet. TLS autofirmado en `.certs/`, secretos ignorados (`.env*`, `*.pem`, `*.key`). Sin cuentas ni nube.
 
 ---
 
 ## ⚖️ Aviso legal
 
-- **Ámbito de uso:** úsalo únicamente en equipos y redes propios o de confianza. El servidor requiere permisos sensibles del sistema (grupo `input`, `/dev/uinput`), ejecuta aplicaciones en tu máquina y expone un puerto HTTPS en tu red local: no lo expongas a Internet.
-- **Certificado autofirmado:** verifica la dirección y la huella del certificado antes de conectar tus dispositivos.
-- **Sin garantías:** software "tal cual" (licencia MIT). El autor no responde de daños directos o indirectos, pérdidas de datos ni accesos no autorizados derivados de su instalación, configuración o uso. La responsabilidad es exclusivamente tuya.
+Úsalo solo en equipos y redes propios o de confianza: requiere permisos sensibles (grupo `input`, `/dev/uinput`), ejecuta apps en tu máquina y expone HTTPS en tu LAN. Verifica dirección y huella del certificado. Software “tal cual” bajo licencia MIT, sin garantías.
