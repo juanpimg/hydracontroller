@@ -139,9 +139,9 @@ cd landing && python3 -m http.server 8080  # http://127.0.0.1:8080
 
 ### Desplegar la landing en Cloudflare Pages
 
-1. Sube el repo a GitHub.
+1. Sube el repo a GitHub (ya está en <https://github.com/juanpimg/hydracontroller>).
 2. En Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git.
-3. Build command: *(vacío)* · Output directory: `apps/hydra-controller/landing` (o `landing` si publicas el monorepo desde esa carpeta).
+3. Build command: *(vacío)* · Output directory: `landing`.
 4. Deploy: cada push a `main` republica sola.
 
 ---
